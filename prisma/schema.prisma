@@ -1,0 +1,233 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client"
+  output   = "../app/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum ProcedureStatus {
+  NOUVEAU
+  EN_COURS
+  RESOLU
+  ANNULE
+  EN_ATTENTE_REPONSE
+  EN_ATTENTE_RETOUR
+  LRAR
+  LRAR_ECHEANCIER
+  BROUILLONS
+}
+
+enum DossierAcceptation {
+  PAS_ENCORE_CHOISI
+  ACCEPTE
+  REFUSE
+}
+
+enum DocumentType {
+  FACTURE
+  DEVIS
+  CONTRAT
+  EMAIL
+  WHATSAPP_SMS
+  AUTRES_PREUVES
+}
+
+enum UserRole {
+  USER
+  JURISTE
+  AVOCAT
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+  CANCELED
+  REFUNDED
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  CANCELED
+  PAST_DUE
+  UNPAID
+  TRIALING
+}
+
+model User {
+  id                   String   @id @default(uuid())
+  email                String   @unique
+  code                 String
+  role                 UserRole @default(USER)
+  nom                  String?
+  prenom               String?
+  adresse              String?  @db.Text
+  codePostal           String?
+  ville                String?
+  telephone            String?
+  iban                 String? // IBAN pour les paiements
+  stripeCustomerId     String?  @unique // ID client Stripe
+  stripeSubscriptionId String?  @unique // ID facturation Stripe
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  procedures         Procedure[]
+  proceduresAssigned Procedure[] @relation("ProcedureAvocat")
+  comments           Comment[]
+  company            Company?
+  payments           Payment[]
+  subscription       Subscription?
+
+  @@map("users")
+}
+
+model Client {
+  id         String   @id @default(uuid())
+  nom        String
+  prenom     String
+  siret      String   @unique
+  nomSociete String?
+  adresse    String?  @db.Text
+  codePostal String?
+  ville      String?
+  email      String?
+  telephone  String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  procedures Procedure[]
+
+  @@map("clients")
+}
+
+model Procedure {
+  id               String             @id @default(uuid())
+  clientId         String
+  userId           String // Utilisateur qui a créé le dossier
+  avocatId         String? // Avocat assigné au dossier (null si non assigné)
+  contexte         String             @db.Text
+  dateFactureEchue DateTime
+  montantDue       Float?             @default(0)
+  montantTTC       Boolean            @default(true) // Indique si le montant est TTC
+  status           ProcedureStatus    @default(NOUVEAU)
+  acceptation      DossierAcceptation @default(PAS_ENCORE_CHOISI)
+  echeancier       Json? // Écheancier de paiement (array d'échéances)
+  dateRelance      DateTime? // Date de relance
+  dateRelance2     DateTime? // Date de relance 2
+  analysed         Boolean            @default(false) // Indique si le dossier a été analysé par un avocat
+  miseEnDemeure    String?            @db.Text // Contenu de la mise en demeure
+  paymentId        String?            @unique // ID du paiement Stripe
+  paymentStatus    PaymentStatus? // Statut du paiement
+  hasEcheancier    Boolean            @default(false) // Indique si un écheancier est inclus
+  hasFacturation    Boolean            @default(false) // Indique si la facturation était active lors de la création
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+
+  client    Client     @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  avocat    User?      @relation("ProcedureAvocat", fields: [avocatId], references: [id], onDelete: SetNull)
+  documents Document[]
+  comments  Comment[]
+  payment   Payment?   @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+
+  @@map("mises_en_demeure")
+}
+
+model Document {
+  id               String       @id @default(uuid())
+  procedureId      String
+  type             DocumentType
+  fileName         String
+  filePath         String
+  fileSize         Int
+  mimeType         String
+  numeroFacture    String? // Numéro de facture (pour les documents de type FACTURE)
+  dateFactureEchue DateTime? // Date facture échue (pour les documents de type FACTURE)
+  montantDue       Float? // Montant dû (pour les documents de type FACTURE)
+  montantTTC       Boolean? // Montant TTC (pour les documents de type FACTURE)
+  createdAt        DateTime     @default(now())
+
+  procedure Procedure @relation(fields: [procedureId], references: [id], onDelete: Cascade)
+
+  @@map("documents")
+}
+
+model Comment {
+  id          String   @id @default(uuid())
+  procedureId String
+  userId      String
+  content     String   @db.Text
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  procedure Procedure @relation(fields: [procedureId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("comments")
+}
+
+model Company {
+  id         String   @id @default(uuid())
+  userId     String   @unique
+  nomSociete String
+  siret      String   @unique
+  adresse    String?  @db.Text
+  codePostal String?
+  ville      String?
+  email      String?
+  telephone  String?
+  siteWeb    String?
+  logoUrl    String?  @db.Text // URL du logo du cabinet
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("companies")
+}
+
+model Payment {
+  id                  String        @id @default(uuid())
+  userId              String
+  procedureId         String?       @unique
+  stripePaymentIntentId String      @unique // ID du PaymentIntent Stripe
+  stripeChargeId      String?       @unique // ID du Charge Stripe
+  amount              Float // Montant en centimes
+  currency            String        @default("eur")
+  status              PaymentStatus @default(PENDING)
+  description         String?       @db.Text
+  metadata            Json? // Métadonnées supplémentaires
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  procedure Procedure?
+
+  @@map("payments")
+}
+
+model Subscription {
+  id                    String             @id @default(uuid())
+  userId                String             @unique
+  stripeSubscriptionId  String             @unique // ID de la facturation Stripe
+  stripePriceId         String // ID du prix Stripe
+  status                SubscriptionStatus @default(TRIALING)
+  currentPeriodStart    DateTime
+  currentPeriodEnd      DateTime
+  cancelAtPeriodEnd     Boolean            @default(false)
+  canceledAt            DateTime?
+  createdAt             DateTime           @default(now())
+  updatedAt             DateTime           @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("subscriptions")
+}

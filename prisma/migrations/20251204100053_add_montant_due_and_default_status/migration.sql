@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE "mises_en_demeure" ADD COLUMN     "montantDue" DOUBLE PRECISION DEFAULT 0,
+ALTER COLUMN "status" SET DEFAULT 'EN_ATTENTE_REPONSE';
