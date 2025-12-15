@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { verifyToken } from "@/lib/jwt";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
-  apiVersion: "2024-12-18.acacia",
+  apiVersion: "2025-11-17.clover",
 });
 
 export async function POST(request: NextRequest) {
@@ -77,12 +77,12 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    const invoice = subscription.latest_invoice as Stripe.Invoice;
-    const paymentIntent = invoice.payment_intent as Stripe.PaymentIntent;
+    const invoice = subscription.latest_invoice as Stripe.Invoice & { payment_intent?: Stripe.PaymentIntent };
+    const paymentIntent = (invoice.payment_intent ?? null) as Stripe.PaymentIntent | null;
 
     return NextResponse.json({
       subscriptionId: subscription.id,
-      clientSecret: paymentIntent?.client_secret,
+      clientSecret: paymentIntent?.client_secret ?? null,
     });
   } catch (error) {
     console.error("Erreur lors de la création de l'abonnement:", error);

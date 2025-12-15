@@ -13,6 +13,7 @@ interface Client {
   nom: string;
   prenom: string;
   siret: string;
+  nomSociete: string | null;
 }
 
 interface Procedure {
@@ -23,6 +24,7 @@ interface Procedure {
   createdAt: string;
   updatedAt: string;
   client: Client;
+  numeroFacture: string | null;
 }
 
 const statusLabels: Record<ProcedureStatusType, string> = {

@@ -1378,7 +1378,7 @@ export default function ProcedureDetailPage() {
                     <p className="text-lg font-bold">
                       {formatAmount(
                         procedure.echeancier.reduce(
-                          (sum: number, e: Echeance) => sum + (typeof e.montant === 'number' ? e.montant : parseFloat(e.montant.toString())),
+                          (sum: number, e: Echeance) => sum + (typeof e.montant === 'number' ? e.montant : parseFloat((e.montant as any).toString())),
                           0
                         )
                       )}

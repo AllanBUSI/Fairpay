@@ -231,8 +231,8 @@ export async function POST(request: NextRequest) {
         dateRelance2: dateRelance2 ? new Date(dateRelance2) : null,
         status: (status as ProcedureStatus) || ProcedureStatus.EN_ATTENTE_REPONSE,
         echeancier: echeancier && Array.isArray(echeancier) && echeancier.length > 0
-          ? echeancier.slice(0, 5) // Limiter à 5 échéances maximum
-          : null,
+          ? echeancier.slice(0, 5) // Limiter à 5 échéances maximum     
+          : undefined,
         documents: documents && Array.isArray(documents) && documents.length > 0
           ? {
               create: documents.map((doc: {

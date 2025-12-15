@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { ProcedureStatus, PaymentStatus, DocumentType } from "@/app/generated/prisma/enums";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
-  apiVersion: "2024-12-18.acacia",
+  apiVersion: "2025-11-17.clover",
 });
 
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET || "";
@@ -359,8 +359,8 @@ async function handleCheckoutSuccess(session: Stripe.Checkout.Session) {
             stripeSubscriptionId: stripeSubscription.id,
             stripePriceId: priceId,
             status: statusMap[stripeSubscription.status] || "TRIALING",
-            currentPeriodStart: new Date(stripeSubscription.current_period_start * 1000),
-            currentPeriodEnd: new Date(stripeSubscription.current_period_end * 1000),
+            currentPeriodStart: new Date((stripeSubscription as any).current_period_start * 1000),
+            currentPeriodEnd: new Date((stripeSubscription as any).current_period_end * 1000),
             cancelAtPeriodEnd: stripeSubscription.cancel_at_period_end,
             canceledAt: stripeSubscription.canceled_at ? new Date(stripeSubscription.canceled_at * 1000) : null,
           },
@@ -516,9 +516,10 @@ async function handlePaymentSuccess(paymentIntent: Stripe.PaymentIntent) {
               status: ProcedureStatus.NOUVEAU,
               hasFacturation,
               hasEcheancier: hasEcheancier || false,
-              echeancier: echeancier && Array.isArray(echeancier) && echeancier.length > 0
-                ? echeancier.slice(0, 5)
-                : null,
+              echeancier:
+                echeancier && Array.isArray(echeancier) && echeancier.length > 0
+                  ? echeancier.slice(0, 5)
+                  : undefined,
               documents: documents && Array.isArray(documents) && documents.length > 0
                 ? {
                     create: documents.map((doc: any) => ({
@@ -601,11 +602,11 @@ async function handlePaymentSuccess(paymentIntent: Stripe.PaymentIntent) {
           paymentStatus: PaymentStatus.SUCCEEDED,
           status: ProcedureStatus.NOUVEAU,
           hasFacturation,
-          hasEcheancier: hasEcheancier || false,
-          echeancier: echeancier && Array.isArray(echeancier) && echeancier.length > 0
-            ? echeancier.slice(0, 5)
-            : null,
-          documents: documents && Array.isArray(documents) && documents.length > 0
+          hasEcheancier: Boolean(hasEcheancier),
+          echeancier: (Array.isArray(echeancier) && echeancier.length > 0)
+            ? JSON.parse(JSON.stringify(echeancier.slice(0, 5)))
+            : undefined,
+          documents: (Array.isArray(documents) && documents.length > 0)
             ? {
                 create: documents.map((doc: any) => ({
                   type: doc.type as DocumentType,
@@ -741,12 +742,14 @@ async function handlePaymentFailure(paymentIntent: Stripe.PaymentIntent) {
           dateRelance2: dateRelance2 ? new Date(dateRelance2) : null,
           paymentStatus: PaymentStatus.FAILED,
           status: ProcedureStatus.BROUILLONS,
-          hasEcheancier: hasEcheancier || false,
-          echeancier: echeancier && Array.isArray(echeancier) && echeancier.length > 0
-            ? echeancier.slice(0, 5)
-            : null,
-          documents: documents && Array.isArray(documents) && documents.length > 0
-            ? {
+          hasEcheancier: Boolean(hasEcheancier),
+          echeancier:
+            echeancier && Array.isArray(echeancier) && echeancier.length > 0
+              ? (echeancier.slice(0, 5) as any)
+              : undefined,
+          documents:
+            documents && Array.isArray(documents) && documents.length > 0
+              ? {
                 create: documents.map((doc: any) => ({
                   type: doc.type as DocumentType,
                   fileName: doc.fileName || "document",
@@ -773,7 +776,7 @@ async function handlePaymentFailure(paymentIntent: Stripe.PaymentIntent) {
 }
 
 async function handleSubscriptionUpdate(subscription: Stripe.Subscription) {
-  const userId = subscription.metadata?.userId;
+  let userId = subscription.metadata?.userId;
   if (!userId) {
     // Essayer de trouver l'utilisateur par customerId
     const user = await prisma.user.findFirst({
@@ -798,9 +801,13 @@ async function handleSubscriptionUpdate(subscription: Stripe.Subscription) {
     where: { stripeSubscriptionId: subscription.id },
     update: {
       status: statusMap[subscription.status] || "TRIALING",
-      currentPeriodStart: new Date(subscription.current_period_start * 1000),
-      currentPeriodEnd: new Date(subscription.current_period_end * 1000),
-      cancelAtPeriodEnd: subscription.cancel_at_period_end,
+      currentPeriodStart: (subscription as any).current_period_start
+        ? new Date((subscription as any).current_period_start * 1000)
+        : undefined,
+      currentPeriodEnd: (subscription as any).current_period_end
+        ? new Date((subscription as any).current_period_end * 1000)
+        : undefined,
+      cancelAtPeriodEnd: (subscription as any).cancel_at_period_end ?? undefined,
       updatedAt: new Date(),
     },
     create: {
@@ -808,8 +815,8 @@ async function handleSubscriptionUpdate(subscription: Stripe.Subscription) {
       stripeSubscriptionId: subscription.id,
       stripePriceId: subscription.items.data[0]?.price.id || "",
       status: statusMap[subscription.status] || "TRIALING",
-      currentPeriodStart: new Date(subscription.current_period_start * 1000),
-      currentPeriodEnd: new Date(subscription.current_period_end * 1000),
+      currentPeriodStart: new Date((subscription as any).current_period_start * 1000),
+      currentPeriodEnd: new Date((subscription as any).current_period_end * 1000),
       cancelAtPeriodEnd: subscription.cancel_at_period_end,
     },
   });

@@ -138,7 +138,7 @@ export async function POST(request: NextRequest) {
             hasEcheancier: hasEcheancier || false,
             echeancier: echeancier && Array.isArray(echeancier) && echeancier.length > 0
               ? echeancier.slice(0, 5)
-              : null,
+              : undefined,
             documents: documents && Array.isArray(documents) && documents.length > 0
               ? {
                   create: documents.map((doc: any) => ({
@@ -224,7 +224,7 @@ export async function POST(request: NextRequest) {
         hasEcheancier: hasEcheancier || false,
         echeancier: echeancier && Array.isArray(echeancier) && echeancier.length > 0
           ? echeancier.slice(0, 5)
-          : null,
+          : undefined,
         documents: documents && Array.isArray(documents) && documents.length > 0
           ? {
               create: documents.map((doc: any) => ({

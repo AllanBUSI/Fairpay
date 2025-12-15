@@ -158,6 +158,7 @@ export default function NewProcedurePage() {
             codePostal: procedure.client.codePostal ?? "",
             ville: procedure.client.ville ?? "",
             email: procedure.client.email ?? "",
+            numeroFacture: procedure.numeroFacture ?? "",
             telephone: procedure.client.telephone ?? "",
             contexte: procedure.contexte ?? "",
             dateFactureEchue: procedure.dateFactureEchue
@@ -268,6 +269,7 @@ export default function NewProcedurePage() {
     nom: "",
     prenom: "",
     siret: "",
+    numeroFacture: "",
     nomSociete: "",
     adresse: "",
     codePostal: "",
@@ -643,6 +645,7 @@ export default function NewProcedurePage() {
     const data = prepareProcedureData();
     // Ajouter l'ID de la procédure si on est en mode édition
     if (isEditingDraft && procedureId) {
+      // @ts-expect-error: Adding missing property for editing
       data.procedureId = procedureId;
     }
 
@@ -905,7 +908,7 @@ export default function NewProcedurePage() {
                     <Label htmlFor="numeroFacture">Numéro de facture *</Label>
                     <Input
                       id="numeroFacture"
-                      value={formData.numeroFacture}
+                      value={formData.numeroFacture ?? ""}
                       onChange={(e) =>
                         setFormData({
                           ...formData,

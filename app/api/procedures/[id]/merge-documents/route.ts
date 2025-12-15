@@ -51,7 +51,7 @@ export async function POST(
       );
     }
 
-    if (procedure.avocatId !== user.id && user.role !== "AVOCAT") {
+    if (procedure.avocatId !== user.userId && user.role !== "AVOCAT") {
       return NextResponse.json(
         { error: "Vous n'avez pas accès à cette procédure" },
         { status: 403 }

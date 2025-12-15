@@ -63,6 +63,14 @@ export async function POST(request: NextRequest) {
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
+    // Vérifier que supabaseAdmin est initialisé
+    if (!supabaseAdmin) {
+      return NextResponse.json(
+        { error: "Configuration Supabase manquante" },
+        { status: 500 }
+      );
+    }
+
     // Upload vers Supabase
     const { data: uploadData, error: uploadError } = await supabaseAdmin.storage
       .from(BUCKET_NAME)

@@ -16,7 +16,7 @@ const DialogContext = React.createContext<DialogContextValue | undefined>(
   undefined
 );
 
-const Dialog = ({ open = false, onOpenChange, children }: DialogProps) => {
+const Dialog = ({ open = false, onOpenChange = () => {}, children }: DialogProps) => {
   return (
     <DialogContext.Provider value={{ open, onOpenChange }}>
       {children}

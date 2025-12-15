@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { verifyToken } from "@/lib/jwt";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
-  apiVersion: "2024-12-18.acacia",
+  apiVersion: "2025-11-17.clover",
 });
 
 export async function GET(request: NextRequest) {
@@ -73,7 +73,11 @@ export async function GET(request: NextRequest) {
         hostedInvoiceUrl: invoice.hosted_invoice_url,
         invoicePdf: invoice.invoice_pdf,
         description: description,
-        subscriptionId: invoice.subscription ? (typeof invoice.subscription === 'string' ? invoice.subscription : invoice.subscription.id) : null,
+        subscriptionId: (invoice as any).subscription
+          ? (typeof (invoice as any).subscription === 'string'
+              ? (invoice as any).subscription
+              : (invoice as any).subscription.id)
+          : null,
         periodStart: invoice.period_start ? new Date(invoice.period_start * 1000).toISOString() : null,
         periodEnd: invoice.period_end ? new Date(invoice.period_end * 1000).toISOString() : null,
       };

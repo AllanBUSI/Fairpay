@@ -5,7 +5,7 @@ import { verifyToken } from "@/lib/jwt";
 import { ProcedureStatus, DocumentType } from "@/app/generated/prisma/enums";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
-  apiVersion: "2024-12-18.acacia",
+  apiVersion: "2025-11-17.clover",
 });
 
 export async function POST(request: NextRequest) {
@@ -100,10 +100,10 @@ export async function POST(request: NextRequest) {
           dateRelance2: dateRelance2 ? new Date(dateRelance2) : null,
           status: ProcedureStatus.BROUILLONS,
           hasFacturation,
-          hasEcheancier: hasEcheancier || false,
+          hasEcheancier: !!hasEcheancier,
           echeancier: echeancier && Array.isArray(echeancier) && echeancier.length > 0
             ? echeancier.slice(0, 5)
-            : null,
+            : undefined,
           documents: documents && Array.isArray(documents) && documents.length > 0
             ? {
                 create: documents.map((doc: any) => ({
@@ -188,10 +188,11 @@ export async function POST(request: NextRequest) {
             dateRelance: dateRelance ? new Date(dateRelance) : null,
             dateRelance2: dateRelance2 ? new Date(dateRelance2) : null,
             hasFacturation,
-            hasEcheancier: hasEcheancier || false,
-            echeancier: echeancier && Array.isArray(echeancier) && echeancier.length > 0
-              ? echeancier.slice(0, 5)
-              : null,
+            hasEcheancier: Boolean(hasEcheancier),
+            echeancier:
+              echeancier && Array.isArray(echeancier) && echeancier.length > 0
+                ? (echeancier.slice(0, 5) as any)
+                : undefined,
             documents: documents && Array.isArray(documents) && documents.length > 0
               ? {
                   create: documents.map((doc: any) => ({
@@ -252,7 +253,7 @@ export async function POST(request: NextRequest) {
       const subscriptionAmountTTC = subscriptionAmountHT * 1.20;
 
       // Ajouter l'abonnement comme première ligne (paiement unique pour le premier mois)
-      sessionParams.line_items.push({
+      sessionParams.line_items?.push({
         price_data: {
           currency: currency,
           product_data: {
@@ -269,7 +270,7 @@ export async function POST(request: NextRequest) {
       const procedureAmountTTC = procedureAmountHT * 1.20;
 
       // Ajouter la procédure comme deuxième ligne
-      sessionParams.line_items.push({
+      sessionParams.line_items?.push({
         price_data: {
           currency: currency,
           product_data: {
@@ -288,7 +289,7 @@ export async function POST(request: NextRequest) {
       const miseEnDemeureHT = 179;
       const miseEnDemeureTTC = miseEnDemeureHT * 1.20;
 
-      sessionParams.line_items.push({
+      sessionParams.line_items?.push({
         price_data: {
           currency: currency,
           product_data: {
@@ -305,7 +306,7 @@ export async function POST(request: NextRequest) {
         const echeancierHT = 49;
         const echeancierTTC = echeancierHT * 1.20;
 
-        sessionParams.line_items.push({
+        sessionParams.line_items?.push({
           price_data: {
             currency: currency,
             product_data: {

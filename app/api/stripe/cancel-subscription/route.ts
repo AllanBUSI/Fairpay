@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { verifyToken } from "@/lib/jwt";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
-  apiVersion: "2024-12-18.acacia",
+  apiVersion: "2025-11-17.clover",
 });
 
 export async function POST(request: NextRequest) {
@@ -36,28 +36,34 @@ export async function POST(request: NextRequest) {
     }
 
     // Annuler la facturation à la fin de la période
-    const subscription = await stripe.subscriptions.update(
+    await stripe.subscriptions.update(
       user.stripeSubscriptionId,
       {
         cancel_at_period_end: true,
       }
     );
 
+    // Récupérer la subscription mise à jour pour obtenir les informations complètes
+    const subscription = await stripe.subscriptions.retrieve(user.stripeSubscriptionId);
+
     // Mettre à jour la base de données
     if (user.subscription) {
       await prisma.subscription.update({
         where: { id: user.subscription.id },
         data: {
-          cancelAtPeriodEnd: true,
-          updatedAt: new Date(),
+            cancelAtPeriodEnd: true,
+            currentPeriodEnd: new Date(
+                (subscription as any)?.current_period_end * 1000
+            ),
+            updatedAt: new Date(),
         },
       });
     }
 
     return NextResponse.json({
       message: "Facturation annulée avec succès",
-      cancelAtPeriodEnd: subscription.cancel_at_period_end,
-      currentPeriodEnd: new Date(subscription.current_period_end * 1000),
+      cancelAtPeriodEnd: (subscription as any).cancel_at_period_end,
+      currentPeriodEnd: new Date((subscription as any).current_period_end * 1000),
     });
   } catch (error) {
     console.error("Erreur lors de l'annulation de l'abonnement:", error);

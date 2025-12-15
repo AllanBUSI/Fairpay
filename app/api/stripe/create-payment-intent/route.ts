@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { verifyToken } from "@/lib/jwt";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
-  apiVersion: "2024-12-18.acacia",
+  apiVersion: "2025-11-17.clover",
 });
 
 export async function POST(request: NextRequest) {
@@ -32,7 +32,11 @@ export async function POST(request: NextRequest) {
 
     // Si des Price ID sont fournis, les utiliser au lieu du montant
     let finalAmount = amount;
-    let lineItems: Stripe.PaymentIntentCreateParams.LineItem[] | undefined;
+    // Stripe.PaymentIntentCreateParams n'a pas LineItem : les line items sont utilisés avec Checkout, pas PaymentIntent
+    // Ici, on ne peut pas passer des price IDs directement à PaymentIntent, seulement à Checkout Session
+    // On simule la logique de sélection ici mais il faudrait revoir plus globalement si l'intention est de payer des price IDs
+    // Pour l'instant, on conserve la logique mais sans type incorrect
+    let lineItems: { price: string; quantity: number }[] | undefined;
 
     if (priceIds && (priceIds.miseEnDemeure || priceIds.echeancier)) {
       lineItems = [];
@@ -83,7 +87,7 @@ export async function POST(request: NextRequest) {
 
     // Créer le PaymentIntent
     const paymentIntentData: Stripe.PaymentIntentCreateParams = {
-      amount: lineItems ? undefined : Math.round(finalAmount * 100), // Convertir en centimes si pas de line items
+      amount: Math.round(finalAmount * 100), // Toujours définir un nombre pour respecter la typisation Stripe
       currency,
       customer: stripeCustomerId,
       metadata: {
@@ -115,11 +119,8 @@ export async function POST(request: NextRequest) {
       paymentIntentData.amount = totalAmount;
     }
 
-    // Ajouter le code promotionnel si fourni
-    if (promoCode) {
-      paymentIntentData.discounts = [{ coupon: promoCode }];
-    }
-
+    // Stripe PaymentIntent ne supporte pas les discounts ou promo codes directement, il faut utiliser Checkout Sessions pour cela
+    // Donc ici, on ne fait rien avec le promoCode — à la place, cela devrait être géré côté Checkout si nécessaire.
     const paymentIntent = await stripe.paymentIntents.create(paymentIntentData);
 
     return NextResponse.json({

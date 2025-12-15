@@ -5,7 +5,7 @@ import { verifyToken } from "@/lib/jwt";
 import { SubscriptionStatus } from "@/app/generated/prisma/enums";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
-  apiVersion: "2024-12-18.acacia",
+  apiVersion: "2025-11-17.clover",
 });
 
 export async function GET(request: NextRequest) {
@@ -47,8 +47,8 @@ export async function GET(request: NextRequest) {
           where: { stripeSubscriptionId: stripeSubscription.id },
           update: {
             status: statusMap[stripeSubscription.status] || SubscriptionStatus.TRIALING,
-            currentPeriodStart: new Date(stripeSubscription.current_period_start * 1000),
-            currentPeriodEnd: new Date(stripeSubscription.current_period_end * 1000),
+            currentPeriodStart: new Date((stripeSubscription as any).current_period_start * 1000),
+            currentPeriodEnd: new Date((stripeSubscription as any).current_period_end * 1000),
             cancelAtPeriodEnd: stripeSubscription.cancel_at_period_end,
             updatedAt: new Date(),
           },
@@ -57,8 +57,8 @@ export async function GET(request: NextRequest) {
             stripeSubscriptionId: stripeSubscription.id,
             stripePriceId: stripeSubscription.items.data[0]?.price.id || "",
             status: statusMap[stripeSubscription.status] || SubscriptionStatus.TRIALING,
-            currentPeriodStart: new Date(stripeSubscription.current_period_start * 1000),
-            currentPeriodEnd: new Date(stripeSubscription.current_period_end * 1000),
+            currentPeriodStart: new Date((stripeSubscription as any).current_period_start * 1000),
+            currentPeriodEnd: new Date((stripeSubscription as any).current_period_end * 1000),
             cancelAtPeriodEnd: stripeSubscription.cancel_at_period_end,
           },
         });
@@ -105,8 +105,8 @@ export async function GET(request: NextRequest) {
             where: { stripeSubscriptionId: stripeSubscription.id },
             update: {
               status: statusMap[stripeSubscription.status] || SubscriptionStatus.TRIALING,
-              currentPeriodStart: new Date(stripeSubscription.current_period_start * 1000),
-              currentPeriodEnd: new Date(stripeSubscription.current_period_end * 1000),
+              currentPeriodStart: new Date((stripeSubscription as any).current_period_start * 1000),
+              currentPeriodEnd: new Date((stripeSubscription as any).current_period_end * 1000),
               cancelAtPeriodEnd: stripeSubscription.cancel_at_period_end,
               updatedAt: new Date(),
             },
@@ -115,8 +115,8 @@ export async function GET(request: NextRequest) {
               stripeSubscriptionId: stripeSubscription.id,
               stripePriceId: stripeSubscription.items.data[0]?.price.id || "",
               status: statusMap[stripeSubscription.status] || SubscriptionStatus.TRIALING,
-              currentPeriodStart: new Date(stripeSubscription.current_period_start * 1000),
-              currentPeriodEnd: new Date(stripeSubscription.current_period_end * 1000),
+              currentPeriodStart: new Date((stripeSubscription as any).current_period_start * 1000),
+              currentPeriodEnd: new Date((stripeSubscription as any).current_period_end * 1000),
               cancelAtPeriodEnd: stripeSubscription.cancel_at_period_end,
             },
           });

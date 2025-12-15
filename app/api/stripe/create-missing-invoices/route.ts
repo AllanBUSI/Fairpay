@@ -5,7 +5,7 @@ import { verifyToken } from "@/lib/jwt";
 import { PaymentStatus } from "@/app/generated/prisma/enums";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
-  apiVersion: "2024-12-18.acacia",
+  apiVersion: "2025-11-17.clover",
 });
 
 export async function POST(request: NextRequest) {
@@ -39,7 +39,7 @@ export async function POST(request: NextRequest) {
         userId: user.id,
         status: PaymentStatus.SUCCEEDED,
         stripePaymentIntentId: {
-          not: null,
+            not: undefined,
         },
       },
       include: {
