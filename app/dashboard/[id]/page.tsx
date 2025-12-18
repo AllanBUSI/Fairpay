@@ -1060,7 +1060,7 @@ export default function ProcedureDetailPage() {
       )}
 
       {/* Content */}
-      <div className="container mx-auto px-6 py-8">
+      <div className="container mx-auto px-4 py-4 sm:px-6 sm:py-6 lg:py-8">
         {/* Bloc spécial si document fusionné existe - Bloque tout le reste */}
         {hasMergedDocument ? (
           <div className="max-w-5xl mx-auto space-y-6">

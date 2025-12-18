@@ -44,8 +44,8 @@ export function PriceComparisonSection() {
 
   return (
     <section className="relative py-32 px-4 sm:px-6 lg:px-8 bg-white overflow-hidden">
-      {/* Lignes décoratives */}
-      <div className="absolute inset-0 pointer-events-none opacity-20">
+      {/* Lignes décoratives - Masquées sur mobile */}
+      <div className="absolute inset-0 pointer-events-none opacity-20 hidden md:block">
         <DecorativeLines variant="diagonal" />
       </div>
 
@@ -163,9 +163,9 @@ export function PriceComparisonSection() {
           </div>
         </ScrollAnimation>
 
-        {/* Résultats de comparaison */}
+        {/* Résultats de comparaison - Masqués sur mobile */}
         <ScrollAnimation animation="fadeInUp" delay={200}>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+          <div className="hidden md:grid grid-cols-1 md:grid-cols-2 gap-8">
             {/* Concurrents */}
             <div className="p-10 rounded-lg border-2 border-[#2563EB] bg-white">
               <div className="flex items-center gap-4 mb-6">

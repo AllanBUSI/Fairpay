@@ -610,11 +610,11 @@ Signature : _________________
     <div className="min-h-screen bg-white">
       {/* Header */}
       <div className="border-b border-[#E5E7EB] bg-white">
-        <div className="container mx-auto px-6 py-6">
+        <div className="container mx-auto px-4 lg:px-6 py-4 lg:py-6">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-3xl font-bold text-[#0F172A] tracking-tight">Dashboard</h1>
-              <p className="text-sm text-[#0F172A]/70 mt-1 font-light">
+              <h1 className="text-2xl lg:text-3xl font-bold text-[#0F172A] tracking-tight">Dashboard</h1>
+              <p className="text-xs lg:text-sm text-[#0F172A]/70 mt-1 font-light">
                 Gestion des procédures
               </p>
             </div>
@@ -623,7 +623,7 @@ Signature : _________________
       </div>
 
       {/* Content */}
-      <div className="container mx-auto px-6 py-8">
+      <div className="container mx-auto px-4 lg:px-6 py-4 lg:py-8">
         {/* Message de succès du paiement */}
         {paymentSuccess && (
           <div className="mb-6 rounded-xl border-2 border-[#16A34A] bg-gradient-to-r from-[#16A34A]/10 to-[#22C55E]/10 p-4 flex items-center gap-3 shadow-sm">
@@ -635,7 +635,7 @@ Signature : _________________
           </div>
         )}
         {/* Encarts principaux */}
-        <div className="mb-8 grid gap-4 md:grid-cols-3">
+        <div className="mb-6 lg:mb-8 grid gap-3 lg:gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
           <div className="rounded-xl border border-[#E5E7EB] bg-white p-6 shadow-sm hover:shadow-md transition-shadow cursor-pointer" onClick={() => router.push("/dashboard")}>
             <div className="flex items-center justify-between">
               <div>
@@ -669,7 +669,7 @@ Signature : _________________
         </div>
         
         {/* Stats Cards détaillées */}
-        <div className="mb-8 grid gap-4 md:grid-cols-4">
+        <div className="mb-6 lg:mb-8 grid gap-3 lg:gap-4 grid-cols-2 lg:grid-cols-4">
           <div className="rounded-xl border border-[#E5E7EB] bg-white p-6 shadow-sm hover:shadow-md transition-shadow">
             <div className="flex items-center justify-between">
               <div>
@@ -679,7 +679,7 @@ Signature : _________________
               <FileText className="h-8 w-8 text-[#2563EB]" />
             </div>
           </div>
-          <div className="rounded-xl border border-[#E5E7EB] bg-white p-6 shadow-sm hover:shadow-md transition-shadow">
+          <div className="rounded-xl border border-[#E5E7EB] p-6 shadow-sm hover:shadow-md transition-shadow">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-[#0F172A]/70">En cours</p>
@@ -690,7 +690,7 @@ Signature : _________________
               <div className="h-8 w-8 rounded-full bg-[#2563EB]/10" />
             </div>
           </div>
-          <div className="rounded-xl border border-[#E5E7EB] bg-white p-6 shadow-sm hover:shadow-md transition-shadow">
+          <div className="rounded-xl border border-[#E5E7EB] p-6 shadow-sm hover:shadow-md transition-shadow">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-[#0F172A]/70">En attente d'examen</p>
@@ -701,7 +701,7 @@ Signature : _________________
               <div className="h-8 w-8 rounded-full bg-yellow-100" />
             </div>
           </div>
-          <div className="rounded-xl border border-[#E5E7EB] bg-white p-6 shadow-sm hover:shadow-md transition-shadow">
+          <div className="rounded-xl border border-[#E5E7EB] p-6 shadow-sm hover:shadow-md transition-shadow">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-[#0F172A]/70">Résolu</p>
@@ -715,8 +715,8 @@ Signature : _________________
         </div>
 
         {/* Tabs */}
-        <div className="mb-6 rounded-xl border border-[#E5E7EB] bg-white p-1 shadow-sm overflow-hidden">
-          <nav className="flex space-x-1 overflow-x-auto tabs-scrollbar">
+        <div className="mb-6 rounded-xl border border-[#E5E7EB] p-1 shadow-sm overflow-hidden">
+          <nav className="flex space-x-1 overflow-x-auto tabs-scrollbar pb-2 -mx-4 px-4 lg:mx-0 lg:px-0">
             {tabs.map((tab) => {
               // Calculer le nombre de procédures pour ce statut
               let count = 0;
@@ -775,12 +775,12 @@ Signature : _________________
             </p>
           </div>
         ) : (
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-3 lg:gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
             {procedures.map((procedure) => (
               <Link
                 key={procedure.id}
                 href={`/dashboard/${procedure.id}`}
-                className="group rounded-xl border border-[#E5E7EB] bg-white p-6 shadow-sm transition-all hover:shadow-md hover:border-[#2563EB]/30 cursor-pointer"
+                className="group rounded-xl border border-[#E5E7EB] p-6 shadow-sm transition-all hover:shadow-md hover:border-[#2563EB]/30 cursor-pointer"
               >
                 <div className="mb-4 flex items-start justify-between">
                   <div className="flex-1">
@@ -966,7 +966,7 @@ Signature : _________________
                     </div>
                   </div>
                 ) : (
-                  <div className="border-2 border-[#E5E7EB] rounded-lg p-4 bg-white">
+                  <div className="border-2 border-[#E5E7EB] rounded-lg p-4">
                     <input
                       ref={attestationInputRef}
                       type="file"

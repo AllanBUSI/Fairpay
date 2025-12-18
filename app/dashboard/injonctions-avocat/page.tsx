@@ -252,7 +252,7 @@ export default function InjonctionsAvocatPage() {
       // Récupérer les fichiers d'injonction pour toutes les procédures
       const allProcedures = [...proceduresAFaireWithDetails, ...proceduresFiniWithDetails];
       const filesMap: Record<string, InjonctionFiles> = {};
-      
+
       await Promise.all(
         allProcedures.map(async (p: Procedure) => {
           const filesResponse = await fetch(`/api/procedures/${p.id}/injonction-files`, {
@@ -392,21 +392,19 @@ export default function InjonctionsAvocatPage() {
           <div className="flex space-x-1">
             <button
               onClick={() => setActiveTab("a-faire")}
-              className={`flex-1 rounded-lg px-4 py-2.5 text-sm font-medium transition-all duration-200 ${
-                activeTab === "a-faire"
+              className={`flex-1 rounded-lg px-4 py-2.5 text-sm font-medium transition-all duration-200 ${activeTab === "a-faire"
                   ? "bg-[#0F172A] text-white shadow-sm"
                   : "text-[#0F172A]/70 hover:bg-[#E5E7EB] hover:text-[#0F172A]"
-              }`}
+                }`}
             >
               À faire ({proceduresAFaire.length})
             </button>
             <button
               onClick={() => setActiveTab("fini")}
-              className={`flex-1 rounded-lg px-4 py-2.5 text-sm font-medium transition-all duration-200 ${
-                activeTab === "fini"
+              className={`flex-1 rounded-lg px-4 py-2.5 text-sm font-medium transition-all duration-200 ${activeTab === "fini"
                   ? "bg-[#0F172A] text-white shadow-sm"
                   : "text-[#0F172A]/70 hover:bg-[#E5E7EB] hover:text-[#0F172A]"
-              }`}
+                }`}
             >
               Fini ({proceduresFini.length})
             </button>
@@ -443,16 +441,14 @@ export default function InjonctionsAvocatPage() {
                     <div className="flex items-start justify-between mb-4">
                       <div className="flex-1">
                         <div className="flex items-center gap-3 mb-2">
-                          <div className={`rounded-full p-2 ${
-                            procedure.status === "INJONCTION_DE_PAIEMENT_FINI"
+                          <div className={`rounded-full p-2 ${procedure.status === "INJONCTION_DE_PAIEMENT_FINI"
                               ? "bg-blue-100"
                               : "bg-amber-100"
-                          }`}>
-                            <Scale className={`h-5 w-5 ${
-                              procedure.status === "INJONCTION_DE_PAIEMENT_FINI"
+                            }`}>
+                            <Scale className={`h-5 w-5 ${procedure.status === "INJONCTION_DE_PAIEMENT_FINI"
                                 ? "text-blue-600"
                                 : "text-amber-600"
-                            }`} />
+                              }`} />
                           </div>
                           <div className="flex-1">
                             <h3 className="text-lg font-semibold text-[#0F172A]">
@@ -462,9 +458,8 @@ export default function InjonctionsAvocatPage() {
                               Dossier ID: {procedure.id.slice(0, 8)}... • SIRET: {procedure.client.siret}
                             </p>
                           </div>
-                          <span className={`rounded-full px-3 py-1 text-xs font-medium border ${
-                            statusColors[procedure.status] || "bg-gray-100 text-gray-800 border-gray-200"
-                          }`}>
+                          <span className={`rounded-full px-3 py-1 text-xs font-medium border ${statusColors[procedure.status] || "bg-gray-100 text-gray-800 border-gray-200"
+                            }`}>
                             {statusLabels[procedure.status] || procedure.status}
                           </span>
                         </div>
@@ -514,7 +509,7 @@ export default function InjonctionsAvocatPage() {
                     </div>
 
                     {/* Actions */}
-                    <div className="flex items-center gap-3">
+                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
                       <Button
                         variant="outline"
                         onClick={() => toggleExpand(procedure.id)}
@@ -548,77 +543,77 @@ export default function InjonctionsAvocatPage() {
                       {/* Documents d'injonction */}
                       {(procedure.status === "INJONCTION_DE_PAIEMENT" ||
                         procedure.status === "INJONCTION_DE_PAIEMENT_PAYER") && (
-                        <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
-                          <h4 className="text-base font-semibold text-amber-900 mb-3 flex items-center gap-2">
-                            <Scale className="h-5 w-5" />
-                            Documents d'injonction de paiement
-                          </h4>
-                          {files ? (
-                            <div className="space-y-3">
-                              {files.kbisFilePath ? (
-                                <div className="rounded border border-amber-200 bg-white p-3">
-                                  <div className="flex items-center justify-between mb-2">
-                                    <div className="flex items-center gap-2">
-                                      <File className="h-4 w-4 text-amber-600" />
-                                      <span className="text-sm font-medium text-amber-900">Kbis de moins de 3 mois</span>
+                          <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
+                            <h4 className="text-base font-semibold text-amber-900 mb-3 flex items-center gap-2">
+                              <Scale className="h-5 w-5" />
+                              Documents d'injonction de paiement
+                            </h4>
+                            {files ? (
+                              <div className="space-y-3">
+                                {files.kbisFilePath ? (
+                                  <div className="rounded border border-amber-200 bg-white p-3">
+                                    <div className="flex items-center justify-between mb-2">
+                                      <div className="flex items-center gap-2">
+                                        <File className="h-4 w-4 text-amber-600" />
+                                        <span className="text-sm font-medium text-amber-900">Kbis de moins de 3 mois</span>
+                                      </div>
+                                      <a
+                                        href={files.kbisFilePath}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                      >
+                                        <Button variant="outline" size="sm">
+                                          <Download className="mr-2 h-3 w-3" />
+                                          Télécharger
+                                        </Button>
+                                      </a>
                                     </div>
-                                    <a
-                                      href={files.kbisFilePath}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                    >
-                                      <Button variant="outline" size="sm">
-                                        <Download className="mr-2 h-3 w-3" />
-                                        Télécharger
-                                      </Button>
-                                    </a>
-                                  </div>
-                                  <div className="mt-2 rounded border bg-white">
-                                    <DocumentViewer
-                                      url={files.kbisFilePath}
-                                      mimeType="application/pdf"
-                                      fileName="Kbis"
-                                    />
-                                  </div>
-                                </div>
-                              ) : (
-                                <p className="text-sm text-amber-700">Kbis non disponible</p>
-                              )}
-                              {files.attestationFilePath ? (
-                                <div className="rounded border border-amber-200 bg-white p-3">
-                                  <div className="flex items-center justify-between mb-2">
-                                    <div className="flex items-center gap-2">
-                                      <FileText className="h-4 w-4 text-amber-600" />
-                                      <span className="text-sm font-medium text-amber-900">Attestation sur l'honneur signée</span>
+                                    <div className="mt-2 rounded border bg-white">
+                                      <DocumentViewer
+                                        url={files.kbisFilePath}
+                                        mimeType="application/pdf"
+                                        fileName="Kbis"
+                                      />
                                     </div>
-                                    <a
-                                      href={files.attestationFilePath}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                    >
-                                      <Button variant="outline" size="sm">
-                                        <Download className="mr-2 h-3 w-3" />
-                                        Télécharger
-                                      </Button>
-                                    </a>
                                   </div>
-                                  <div className="mt-2 rounded border bg-white">
-                                    <DocumentViewer
-                                      url={files.attestationFilePath}
-                                      mimeType="application/pdf"
-                                      fileName="Attestation sur l'honneur"
-                                    />
+                                ) : (
+                                  <p className="text-sm text-amber-700">Kbis non disponible</p>
+                                )}
+                                {files.attestationFilePath ? (
+                                  <div className="rounded border border-amber-200 bg-white p-3">
+                                    <div className="flex items-center justify-between mb-2">
+                                      <div className="flex items-center gap-2">
+                                        <FileText className="h-4 w-4 text-amber-600" />
+                                        <span className="text-sm font-medium text-amber-900">Attestation sur l'honneur signée</span>
+                                      </div>
+                                      <a
+                                        href={files.attestationFilePath}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                      >
+                                        <Button variant="outline" size="sm">
+                                          <Download className="mr-2 h-3 w-3" />
+                                          Télécharger
+                                        </Button>
+                                      </a>
+                                    </div>
+                                    <div className="mt-2 rounded border bg-white">
+                                      <DocumentViewer
+                                        url={files.attestationFilePath}
+                                        mimeType="application/pdf"
+                                        fileName="Attestation sur l'honneur"
+                                      />
+                                    </div>
                                   </div>
-                                </div>
-                              ) : (
-                                <p className="text-sm text-amber-700">Attestation non disponible</p>
-                              )}
-                            </div>
-                          ) : (
-                            <p className="text-sm text-amber-700">Chargement des documents...</p>
-                          )}
-                        </div>
-                      )}
+                                ) : (
+                                  <p className="text-sm text-amber-700">Attestation non disponible</p>
+                                )}
+                              </div>
+                            ) : (
+                              <p className="text-sm text-amber-700">Chargement des documents...</p>
+                            )}
+                          </div>
+                        )}
 
                       {/* Tous les documents */}
                       <div>

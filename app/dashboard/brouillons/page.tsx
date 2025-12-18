@@ -153,9 +153,9 @@ export default function BrouillonsPage() {
                 key={procedure.id}
                 className="rounded-lg border bg-card p-6 shadow-sm hover:shadow-md transition-shadow"
               >
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-2">
+                <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
+                  <div className="flex-1 w-full">
+                    <div className="flex flex-wrap items-center gap-2 mb-2">
                       <h3 className="text-lg font-semibold">
                         {procedure.client?.nomSociete || `${procedure.client?.prenom || ""} ${procedure.client?.nom || ""}`.trim() || "Client non renseigné"}
                       </h3>
@@ -185,14 +185,16 @@ export default function BrouillonsPage() {
                       </span>
                     </div>
                   </div>
-                  <div className="flex gap-2 ml-4">
+                  <div className="flex flex-wrap gap-2 w-full md:w-auto">
                     <Button
                       variant="outline"
+                      className="flex-1 md:flex-none"
                       onClick={() => router.push(`/dashboard/${procedure.id}`)}
                     >
                       Voir
                     </Button>
                     <Button
+                      className="flex-1 md:flex-none"
                       onClick={() => router.push(`/dashboard/new?id=${procedure.id}`)}
                     >
                       Compléter et payer
@@ -201,7 +203,7 @@ export default function BrouillonsPage() {
                       variant="outline"
                       onClick={() => handleDelete(procedure.id)}
                       disabled={deletingId === procedure.id}
-                      className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                      className="flex-1 md:flex-none text-red-600 hover:text-red-700 hover:bg-red-50"
                     >
                       {deletingId === procedure.id ? (
                         <>

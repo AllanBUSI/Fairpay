@@ -5,6 +5,8 @@ import { useRouter, usePathname } from "next/navigation";
 import { Sidebar } from "@/components/ui/sidebar";
 import SupportChat from "@/components/ui/support-chat";
 import { UserRole } from "@/app/generated/prisma/enums";
+import { Menu } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 interface User {
   id: string;
@@ -42,6 +44,7 @@ export default function DashboardLayout({
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [isPremium, setIsPremium] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [counts, setCounts] = useState<{
     dashboard?: number;
     injonctions?: number;
@@ -282,7 +285,7 @@ export default function DashboardLayout({
 
   if (loading) {
     return (
-      <div className="flex h-screen items-center justify-center">
+      <div className="flex h-screen items-center justify-center bg-white">
         <div className="text-center">
           <p className="text-muted-foreground">Chargement...</p>
         </div>
@@ -292,10 +295,31 @@ export default function DashboardLayout({
 
   return (
     <div className="flex h-screen overflow-hidden bg-white">
-      <Sidebar user={user} onLogout={handleLogout} isPremium={isPremium} counts={counts} />
-      <div className="flex-1 overflow-y-auto bg-[#E5E7EB]/30">
-        <div className="min-h-full">
-          {children}
+      <Sidebar 
+        user={user} 
+        onLogout={handleLogout} 
+        isPremium={isPremium} 
+        counts={counts}
+        isOpen={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
+      />
+      <div className="flex-1 flex flex-col overflow-hidden bg-white">
+        {/* Mobile header avec bouton menu */}
+        <div className="lg:hidden bg-white border-b border-[#E5E7EB] px-4 py-3 flex items-center gap-3">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setSidebarOpen(true)}
+            className="lg:hidden"
+          >
+            <Menu className="h-5 w-5" />
+          </Button>
+          <span className="text-lg font-bold text-[#0F172A]">FairPay</span>
+        </div>
+        <div className="flex-1 overflow-y-auto">
+          <div className="min-h-full p-4 lg:p-6">
+            {children}
+          </div>
         </div>
       </div>
       <SupportChat />

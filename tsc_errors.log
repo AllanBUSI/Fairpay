@@ -1,0 +1,9 @@
+app/dashboard/new/page.tsx(1068,14): error TS17008: JSX element 'div' has no corresponding closing tag.
+app/dashboard/new/page.tsx(1182,15): error TS1005: ')' expected.
+app/dashboard/new/page.tsx(1525,11): error TS17002: Expected corresponding JSX closing tag for 'DialogContent'.
+app/dashboard/new/page.tsx(1543,9): error TS17002: Expected corresponding JSX closing tag for 'Dialog'.
+app/dashboard/new/page.tsx(1544,7): error TS17002: Expected corresponding JSX closing tag for 'div'.
+app/dashboard/new/page.tsx(1546,7): error TS1005: ')' expected.
+app/dashboard/new/page.tsx(1698,7): error TS1128: Declaration or statement expected.
+app/dashboard/new/page.tsx(1699,5): error TS1109: Expression expected.
+app/dashboard/new/page.tsx(1700,3): error TS1109: Expression expected.
