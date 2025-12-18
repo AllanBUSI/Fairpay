@@ -13,8 +13,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { FileText, Download, Image as ImageIcon, File, Plus, MessageSquare, Calendar, X, Edit2, Save, RotateCcw, CheckCircle2, FilePenLine, Briefcase, Send, ChevronDown, Settings, Eye } from "lucide-react";
-import Link from "next/link";
+import { FileText, Download, Image as ImageIcon, File, Plus, Calendar, X, Edit2, Save, RotateCcw, CheckCircle2, FilePenLine, Briefcase, Settings, Eye, Loader2, Scale } from "lucide-react";
 import { DocumentViewer } from "@/components/ui/document-viewer";
 import { Chat } from "@/components/ui/chat";
 import { FileUpload } from "@/components/ui/file-upload";
@@ -23,7 +22,7 @@ import { EcheancierEditor } from "@/components/ui/echeancier-editor";
 import { UserRole } from "@/app/generated/prisma/enums";
 import { canCommentDossier, canUploadDocuments } from "@/lib/permissions";
 
-type ProcedureStatusType = "NOUVEAU" | "EN_COURS" | "RESOLU" | "ANNULE" | "EN_ATTENTE_REPONSE" | "EN_ATTENTE_RETOUR" | "LRAR" | "LRAR_ECHEANCIER";
+type ProcedureStatusType = "NOUVEAU" | "EN_COURS" | "RESOLU" | "ANNULE" | "EN_ATTENTE_REPONSE" | "EN_ATTENTE_RETOUR" | "LRAR" | "LRAR_ECHEANCIER" | "LRAR_FINI" | "ENVOYE" | "INJONCTION_DE_PAIEMENT" | "INJONCTION_DE_PAIEMENT_PAYER";
 
 interface Client {
   id: string;
@@ -32,6 +31,8 @@ interface Client {
   siret: string;
   nomSociete: string | null;
   adresse: string | null;
+  codePostal: string | null;
+  ville: string | null;
   email: string | null;
   telephone: string | null;
 }
@@ -68,6 +69,9 @@ interface Procedure {
   analysed: boolean;
   miseEnDemeure: string | null;
   avocatId: string | null;
+  penalites: number | null;
+  dateEnvoiLRAR: string | null;
+  commentaireLRAR: string | null;
   createdAt: string;
   updatedAt: string;
   client: Client;
@@ -83,6 +87,10 @@ const statusLabels: Record<ProcedureStatusType, string> = {
   EN_ATTENTE_RETOUR: "En attente de réponse",
   LRAR: "LRAR",
   LRAR_ECHEANCIER: "LRAR avec écheancier",
+  LRAR_FINI: "LRAR terminé",
+  ENVOYE: "Envoyé",
+  INJONCTION_DE_PAIEMENT: "Injonction de paiement",
+  INJONCTION_DE_PAIEMENT_PAYER: "Injonction de paiement payée",
 };
 
 const statusColors: Record<ProcedureStatusType, string> = {
@@ -93,7 +101,11 @@ const statusColors: Record<ProcedureStatusType, string> = {
   EN_ATTENTE_REPONSE: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400",
   EN_ATTENTE_RETOUR: "bg-orange-100 text-orange-800 dark:bg-orange-900/20 dark:text-orange-400",
   LRAR: "bg-indigo-100 text-indigo-800 dark:bg-indigo-900/20 dark:text-indigo-400",
+  INJONCTION_DE_PAIEMENT: "bg-amber-100 text-amber-800 dark:bg-amber-900/20 dark:text-amber-400",
+  INJONCTION_DE_PAIEMENT_PAYER: "bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400",
   LRAR_ECHEANCIER: "bg-teal-100 text-teal-800 dark:bg-teal-900/20 dark:text-teal-400",
+  LRAR_FINI: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-400",
+  ENVOYE: "bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400",
 };
 
 const documentTypeLabels: Record<string, string> = {
@@ -112,6 +124,10 @@ export default function ProcedureDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [user, setUser] = useState<{ id: string; email: string; role: UserRole } | null>(null);
+  const [injonctionFiles, setInjonctionFiles] = useState<{
+    kbisFilePath: string | null;
+    attestationFilePath: string | null;
+  } | null>(null);
   const [showAddDocuments, setShowAddDocuments] = useState(false);
   const [addingDocuments, setAddingDocuments] = useState(false);
   const [showManageInvoiceNumbers, setShowManageInvoiceNumbers] = useState(false);
@@ -130,14 +146,17 @@ export default function ProcedureDetailPage() {
   const [takingDossier, setTakingDossier] = useState(false);
   const [showMiseEnDemeure, setShowMiseEnDemeure] = useState(false);
   const [miseEnDemeureContent, setMiseEnDemeureContent] = useState("");
-  const [savingMiseEnDemeure, setSavingMiseEnDemeure] = useState(false);
   const [markingAnalysed, setMarkingAnalysed] = useState(false);
-  const [sendingMiseEnDemeure, setSendingMiseEnDemeure] = useState(false);
+  const [, setSavingMiseEnDemeure] = useState(false);
   const [showEcheancier, setShowEcheancier] = useState(false);
   const [savingEcheancier, setSavingEcheancier] = useState(false);
   const [showStatusChange, setShowStatusChange] = useState(false);
   const [changingStatus, setChangingStatus] = useState(false);
   const [selectedStatus, setSelectedStatus] = useState<ProcedureStatusType | "">("");
+  const [sendingLRAR, setSendingLRAR] = useState(false);
+  const [penalites, setPenalites] = useState("");
+  const [commentaireLRAR, setCommentaireLRAR] = useState("");
+  const [showSendLRARForm, setShowSendLRARForm] = useState(false);
   const [filesByType, setFilesByType] = useState<Record<string, Array<{
     fileName: string;
     filePath: string;
@@ -158,7 +177,7 @@ export default function ProcedureDetailPage() {
   useEffect(() => {
     fetchUser();
     fetchProcedure();
-  }, [params.id]);
+  }, [params["id"]]);
 
   const fetchUser = async () => {
     try {
@@ -191,7 +210,7 @@ export default function ProcedureDetailPage() {
         return;
       }
 
-      const response = await fetch(`/api/procedures/${params.id}`, {
+      const response = await fetch(`/api/procedures/${params["id"]}`, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -208,16 +227,29 @@ export default function ProcedureDetailPage() {
         throw new Error(data.error || "Erreur lors du chargement");
       }
 
+      // Vérifier que data.procedure existe
+      if (!data || !data.procedure) {
+        throw new Error("Procédure non trouvée");
+      }
+
       // S'assurer que echeancier est un tableau
+      let echeancier = null;
+      if (data.procedure.echeancier) {
+        try {
+          if (Array.isArray(data.procedure.echeancier)) {
+            echeancier = data.procedure.echeancier;
+          } else if (typeof data.procedure.echeancier === 'string') {
+            echeancier = JSON.parse(data.procedure.echeancier);
+          }
+        } catch (e) {
+          console.error("Erreur lors du parsing de l'échéancier:", e);
+          echeancier = null;
+        }
+      }
+
       const procedureData = {
         ...data.procedure,
-        echeancier: data.procedure.echeancier 
-          ? (Array.isArray(data.procedure.echeancier) 
-              ? data.procedure.echeancier 
-              : (typeof data.procedure.echeancier === 'string' 
-                  ? JSON.parse(data.procedure.echeancier) 
-                  : []))
-          : null,
+        echeancier: echeancier,
         // S'assurer que documents est un tableau
         documents: data.procedure.documents && Array.isArray(data.procedure.documents)
           ? data.procedure.documents
@@ -238,10 +270,63 @@ export default function ProcedureDetailPage() {
       if (procedureData.miseEnDemeure) {
         setMiseEnDemeureContent(procedureData.miseEnDemeure);
       }
+
+      // Si la procédure est en statut INJONCTION_DE_PAIEMENT_PAYER, récupérer les fichiers Kbis et attestation
+      if (procedureData.status === "INJONCTION_DE_PAIEMENT_PAYER" || procedureData.status === "INJONCTION_DE_PAIEMENT") {
+        await fetchInjonctionFiles(procedureData.id, token);
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Une erreur est survenue");
+      console.error("Erreur lors de la récupération de la procédure:", err);
+      const errorMessage = err instanceof Error ? err.message : "Une erreur est survenue lors du chargement de la procédure";
+      setError(errorMessage);
+      // Ne pas définir procedure à null si on a déjà une procédure chargée
+      // Cela permet de garder l'affichage en cas d'erreur réseau temporaire
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchInjonctionFiles = async (procedureId: string, token: string) => {
+    try {
+      console.log(`🔍 Récupération des fichiers d'injonction pour la procédure ${procedureId}`);
+      
+      // Utiliser la nouvelle route API dédiée
+      const filesResponse = await fetch(`/api/procedures/${procedureId}/injonction-files`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (filesResponse.ok) {
+        const filesData = await filesResponse.json();
+        console.log(`📁 Fichiers récupérés:`, filesData);
+        
+        // Définir les fichiers même s'ils sont null (pour afficher le message approprié)
+        setInjonctionFiles({
+          kbisFilePath: filesData.kbisFilePath || null,
+          attestationFilePath: filesData.attestationFilePath || null,
+        });
+        
+        if (filesData.kbisFilePath || filesData.attestationFilePath) {
+          console.log(`✅ Fichiers d'injonction chargés avec succès`);
+        } else {
+          console.warn(`⚠️ Aucun fichier trouvé pour cette procédure`);
+        }
+      } else {
+        console.error(`❌ Erreur lors de la récupération des fichiers:`, filesResponse.status);
+        // Définir à null pour afficher le message de chargement
+        setInjonctionFiles({
+          kbisFilePath: null,
+          attestationFilePath: null,
+        });
+      }
+    } catch (err) {
+      console.error("❌ Erreur lors de la récupération des fichiers d'injonction:", err);
+      // Définir à null en cas d'erreur
+      setInjonctionFiles({
+        kbisFilePath: null,
+        attestationFilePath: null,
+      });
     }
   };
 
@@ -352,42 +437,6 @@ export default function ProcedureDetailPage() {
     }
   };
 
-  const handleSendMiseEnDemeure = async () => {
-    if (!procedure || !user) return;
-
-    setSendingMiseEnDemeure(true);
-    setError("");
-
-    try {
-      const token = localStorage.getItem("token");
-      if (!token) {
-        router.push("/login");
-        return;
-      }
-
-      const response = await fetch(`/api/procedures/${procedure.id}`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          status: "EN_COURS",
-        }),
-      });
-
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || "Erreur lors de l'envoi de la mise en demeure");
-      }
-
-      await fetchProcedure();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Une erreur est survenue");
-    } finally {
-      setSendingMiseEnDemeure(false);
-    }
-  };
 
   const handleSaveEcheancier = async (echeancier: Echeance[]) => {
     if (!procedure || !user) return;
@@ -474,6 +523,60 @@ export default function ProcedureDetailPage() {
       setError(err instanceof Error ? err.message : "Une erreur est survenue");
     } finally {
       setChangingStatus(false);
+    }
+  };
+
+  const handleSendLRAR = async () => {
+    if (!procedure || !user) return;
+
+    // Vérifier que le recommandé n'a pas déjà été envoyé
+    if (procedure.dateEnvoiLRAR) {
+      setError("Le recommandé a déjà été envoyé");
+      setShowSendLRARForm(false);
+      return;
+    }
+
+    if (!penalites) {
+      setError("Veuillez renseigner les pénalités");
+      return;
+    }
+
+    setSendingLRAR(true);
+    setError("");
+
+    try {
+      const token = localStorage.getItem("token");
+      if (!token) {
+        router.push("/login");
+        return;
+      }
+
+      const response = await fetch(`/api/procedures/${procedure.id}/send-lrar`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          penalites: parseFloat(penalites),
+          commentaireLRAR: commentaireLRAR || null,
+        }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || "Erreur lors de l'envoi du recommandé");
+      }
+
+      // Fermer le formulaire et recharger la procédure
+      setShowSendLRARForm(false);
+      setPenalites("");
+      setCommentaireLRAR("");
+      await fetchProcedure();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Une erreur est survenue");
+    } finally {
+      setSendingLRAR(false);
     }
   };
 
@@ -762,6 +865,20 @@ export default function ProcedureDetailPage() {
     return mimeType === "application/pdf";
   };
 
+  // Fonction helper pour trouver le document fusionné
+  const getMergedDocument = () => {
+    if (!procedure?.documents) return null;
+    return procedure.documents.find(doc => 
+      doc.fileName.toLowerCase().includes("fusionné") || 
+      doc.fileName.toLowerCase().includes("merged") ||
+      doc.fileName.toLowerCase().startsWith("merged-") ||
+      (doc.type === "AUTRES_PREUVES" && doc.fileName.toLowerCase().includes("document fusionné"))
+    ) || null;
+  };
+
+  const mergedDocument = getMergedDocument();
+  const hasMergedDocument = !!mergedDocument;
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted/20 flex items-center justify-center">
@@ -772,10 +889,30 @@ export default function ProcedureDetailPage() {
 
   if (error || !procedure) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted/20">
-        <div className="container mx-auto px-4 py-8">
-          <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive">
-            {error || "Procédure non trouvée"}
+      <div className="min-h-screen bg-white flex items-center justify-center">
+        <div className="text-center space-y-4 max-w-md px-6">
+          <div className="text-red-600 text-lg font-semibold">
+            {error || "Erreur lors de la récupération de la procédure"}
+          </div>
+          <p className="text-sm text-[#0F172A]/70">
+            {error || "La procédure demandée n'a pas pu être chargée. Veuillez réessayer."}
+          </p>
+          <div className="flex gap-3 justify-center">
+            <Button 
+              onClick={() => router.push("/dashboard")}
+              className="bg-[#0F172A] hover:bg-[#0F172A]/90"
+            >
+              Retour au tableau de bord
+            </Button>
+            <Button 
+              variant="outline"
+              onClick={() => {
+                setError("");
+                fetchProcedure();
+              }}
+            >
+              Réessayer
+            </Button>
           </div>
         </div>
       </div>
@@ -783,15 +920,16 @@ export default function ProcedureDetailPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted/20">
-      {/* Header */}
-      <div className="border-b bg-card/50 backdrop-blur supports-[backdrop-filter]:bg-card/50">
-        <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex h-20 items-center justify-between">
+    <div className="min-h-screen bg-white">
+      {/* Header - Masqué si document fusionné existe */}
+      {!hasMergedDocument && (
+      <div className="border-b border-[#E5E7EB] bg-white">
+        <div className="container mx-auto px-6 py-6">
+          <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               <div>
-                <h1 className="text-2xl font-bold tracking-tight">Détail du dossier</h1>
-                <p className="text-sm text-muted-foreground">
+                <h1 className="text-3xl font-bold tracking-tight text-[#0F172A]">Détail du dossier</h1>
+                <p className="text-sm text-[#0F172A]/70 mt-1 font-light">
                   {procedure.client?.prenom} {procedure.client?.nom}
                 </p>
               </div>
@@ -919,15 +1057,85 @@ export default function ProcedureDetailPage() {
           </div>
         </div>
       </div>
+      )}
 
       {/* Content */}
-      <div className="container mx-auto px-4 py-8 sm:px-6 lg:px-8">
-        <div className="grid gap-6 lg:grid-cols-3">
-          {/* Informations principales */}
-          <div className="lg:col-span-1 space-y-6">
+      <div className="container mx-auto px-6 py-8">
+        {/* Bloc spécial si document fusionné existe - Bloque tout le reste */}
+        {hasMergedDocument ? (
+          <div className="max-w-5xl mx-auto space-y-6">
+            {/* Document uniquement */}
+            <div className="rounded-xl border-2 border-[#16A34A] bg-gradient-to-br from-[#16A34A]/5 to-[#22C55E]/5 p-6 shadow-lg">
+              <div className="mb-4 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <h3 className="text-xl font-semibold text-[#0F172A] flex items-center gap-2">
+                    <File className="h-5 w-5 text-[#16A34A]" />
+                    Document prêt à être envoyé
+                  </h3>
+                  {/* Badge si déjà envoyé - À gauche */}
+                  {procedure.dateEnvoiLRAR && (
+                    <div className="rounded-full px-3 py-1.5 text-sm font-medium bg-green-100 text-green-800">
+                      Recommandé envoyé le {new Date(procedure.dateEnvoiLRAR).toLocaleDateString("fr-FR")}
+                    </div>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  {mergedDocument && (
+                    <a
+                      href={mergedDocument.filePath}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      <Button variant="outline" size="sm">
+                        <Download className="mr-2 h-4 w-4" />
+                        Télécharger
+                      </Button>
+                    </a>
+                  )}
+                  {/* Bouton Envoyer - Seulement pour les avocats et si pas déjà envoyé */}
+                  {user && user.role === UserRole.AVOCAT && procedure.avocatId === user.id && !procedure.dateEnvoiLRAR && (
+                    <Button 
+                      onClick={() => setShowSendLRARForm(true)}
+                      className="bg-[#16A34A] hover:bg-[#16A34A]/90 text-white"
+                      size="sm"
+                    >
+                      <CheckCircle2 className="mr-2 h-4 w-4" />
+                      Envoyer
+                    </Button>
+                  )}
+                </div>
+              </div>
+              
+              {mergedDocument ? (
+                <div className="rounded-lg border border-[#E5E7EB] bg-white overflow-hidden">
+                  <div className="p-3 bg-[#E5E7EB]/30 border-b border-[#E5E7EB]">
+                    <p className="text-sm font-medium text-[#0F172A]">
+                      {mergedDocument.fileName}
+                    </p>
+                  </div>
+                  <div className="bg-background" style={{ minHeight: "80vh" }}>
+                    <DocumentViewer
+                      url={mergedDocument.filePath}
+                      mimeType="application/pdf"
+                      fileName={mergedDocument.fileName}
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div className="rounded-lg border border-[#E5E7EB] bg-white p-12 text-center">
+                  <FileText className="mx-auto h-12 w-12 text-[#0F172A]/40 mb-4" />
+                  <p className="text-sm text-[#0F172A]/70">Aucun document fusionné trouvé</p>
+                </div>
+              )}
+            </div>
+          </div>
+        ) : (
+          <div className="grid gap-6 lg:grid-cols-3">
+            {/* Informations principales */}
+            <div className="lg:col-span-1 space-y-6">
             {/* Chat en haut - seulement si le dossier a été pris */}
             {user && procedure.avocatId !== null && (
-              <div className="rounded-lg border bg-card shadow-sm" style={{ height: "600px" }}>
+              <div className="rounded-xl border border-[#E5E7EB] bg-white shadow-sm" style={{ height: "600px" }}>
                 <Chat
                   procedureId={procedure.id}
                   currentUserRole={user.role}
@@ -939,7 +1147,7 @@ export default function ProcedureDetailPage() {
             )}
 
             {/* Informations en bas */}
-            <div className="rounded-lg border bg-card p-6 shadow-sm">
+            <div className="rounded-xl border border-[#E5E7EB] bg-white p-6 shadow-sm">
               <h2 className="mb-4 text-lg font-semibold">Informations</h2>
               
               <div className="space-y-4">
@@ -1186,7 +1394,7 @@ export default function ProcedureDetailPage() {
               <div className="space-y-4">
                 {/* Bouton pour voir le dossier en détails */}
                 {procedure.avocatId === user.id && (
-                  <div className="rounded-lg border bg-card p-6 shadow-sm">
+                  <div className="rounded-xl border border-[#E5E7EB] bg-white p-6 shadow-sm">
                     <div className="flex items-center justify-between">
                       <div>
                         <h3 className="text-lg font-semibold mb-1">Préparer l'envoi par recommandé</h3>
@@ -1206,7 +1414,7 @@ export default function ProcedureDetailPage() {
                 )}
                 {/* Prendre le dossier si nouveau */}
                 {procedure.status === "NOUVEAU" && (
-                  <div className="rounded-lg border bg-card p-6 shadow-sm">
+                  <div className="rounded-xl border border-[#E5E7EB] bg-white p-6 shadow-sm">
                     <div className="flex items-center justify-between">
                       <div>
                         <h3 className="text-lg font-semibold mb-1">Nouveau dossier</h3>
@@ -1260,7 +1468,7 @@ export default function ProcedureDetailPage() {
                 {/* Analyse du dossier */}
                 {procedure.status !== "NOUVEAU" && (
                   <div className="space-y-4">
-                    <div className="rounded-lg border bg-card p-6 shadow-sm">
+                    <div className="rounded-xl border border-[#E5E7EB] bg-white p-6 shadow-sm">
                       <div className="flex items-center justify-between">
                         <div>
                           <h3 className="text-lg font-semibold mb-1">Analyse du dossier</h3>
@@ -1307,42 +1515,20 @@ export default function ProcedureDetailPage() {
                       </div>
                     </div>
 
-                    {/* Bouton pour envoyer la mise en demeure */}
-                    {procedure.analysed && procedure.miseEnDemeure && procedure.status !== "EN_COURS" && (
-                      <div className="rounded-lg border bg-card p-6 shadow-sm">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <h3 className="text-lg font-semibold mb-1">Mise en demeure</h3>
-                            <p className="text-sm text-muted-foreground">
-                              La mise en demeure a été rédigée. Cliquez pour l'envoyer et passer le dossier en cours.
-                            </p>
-                          </div>
-                          <Button
-                            onClick={handleSendMiseEnDemeure}
-                            disabled={sendingMiseEnDemeure}
-                            variant="default"
-                            className="bg-green-600 hover:bg-green-700"
-                          >
-                            <Send className="mr-2 h-4 w-4" />
-                            {sendingMiseEnDemeure ? "Envoi..." : "Mise en demeure envoyée"}
-                          </Button>
-                        </div>
-                      </div>
-                    )}
                   </div>
                 )}
               </div>
             )}
 
             {/* Contexte */}
-            <div className="rounded-lg border bg-card p-6 shadow-sm">
+            <div className="rounded-xl border border-[#E5E7EB] bg-white p-6 shadow-sm">
               <h2 className="mb-4 text-lg font-semibold">Contexte</h2>
               <p className="text-muted-foreground whitespace-pre-wrap">{procedure.contexte}</p>
             </div>
 
             {/* Écheancier - seulement si le dossier a été pris */}
             {procedure.echeancier && Array.isArray(procedure.echeancier) && procedure.echeancier.length > 0 && (
-              <div className="rounded-lg border bg-card p-6 shadow-sm">
+              <div className="rounded-xl border border-[#E5E7EB] bg-white p-6 shadow-sm">
                 <h2 className="mb-4 text-lg font-semibold flex items-center gap-2">
                   <Calendar className="h-5 w-5" />
                   Écheancier de paiement
@@ -1388,12 +1574,90 @@ export default function ProcedureDetailPage() {
               </div>
             )}
 
+            {/* Document fusionné - Encart spécial */}
+            {procedure.documents?.some(doc => 
+              doc.fileName.toLowerCase().includes("fusionné") || 
+              doc.fileName.toLowerCase().includes("merged") ||
+              doc.fileName.toLowerCase().startsWith("merged-") ||
+              (doc.type === "AUTRES_PREUVES" && doc.fileName.toLowerCase().includes("document fusionné"))
+            ) && (
+              <div className="rounded-lg border-2 border-emerald-500 bg-gradient-to-br from-emerald-50 to-green-50 dark:from-emerald-950/20 dark:to-green-950/20 p-6 shadow-lg">
+                <div className="flex items-start justify-between mb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-500 text-white">
+                      <CheckCircle2 className="h-6 w-6" />
+                    </div>
+                    <div>
+                      <h2 className="text-xl font-bold text-emerald-900 dark:text-emerald-100">
+                        Document prêt à être envoyé
+                      </h2>
+                      <p className="text-sm text-emerald-700 dark:text-emerald-300 mt-1">
+                        Votre document fusionné est prêt pour l'envoi par recommandé
+                      </p>
+                    </div>
+                  </div>
+                  <div className="px-3 py-1 rounded-full bg-emerald-500 text-white text-xs font-semibold">
+                    PRÊT
+                  </div>
+                </div>
+                {procedure.documents
+                  .filter(doc => 
+                    doc.fileName.toLowerCase().includes("fusionné") || 
+                    doc.fileName.toLowerCase().includes("merged") ||
+                    doc.fileName.toLowerCase().startsWith("merged-") ||
+                    (doc.type === "AUTRES_PREUVES" && doc.fileName.toLowerCase().includes("document fusionné"))
+                  )
+                  .map((document) => (
+                    <div key={document.id} className="rounded-lg border border-emerald-200 dark:border-emerald-800 bg-white dark:bg-emerald-950/30 p-4">
+                      <div className="flex items-start justify-between mb-3">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-2">
+                            <File className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+                            <span className="text-sm font-semibold text-emerald-900 dark:text-emerald-100">
+                              {document.fileName}
+                            </span>
+                          </div>
+                          <p className="text-xs text-emerald-700 dark:text-emerald-300">
+                            {formatFileSize(document.fileSize)} • {formatDate(document.createdAt)}
+                          </p>
+                        </div>
+                        <a
+                          href={document.filePath}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="ml-4"
+                        >
+                          <Button variant="default" size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white">
+                            <Download className="mr-2 h-4 w-4" />
+                            Télécharger
+                          </Button>
+                        </a>
+                      </div>
+                      
+                      {/* Lecteur de document */}
+                      <div className="mt-3 rounded border border-emerald-200 dark:border-emerald-800 bg-background">
+                        <DocumentViewer
+                          url={document.filePath}
+                          mimeType={document.mimeType || "application/pdf"}
+                          fileName={document.fileName}
+                        />
+                      </div>
+                    </div>
+                  ))}
+              </div>
+            )}
+
             {/* Documents */}
-            <div className="rounded-lg border bg-card p-6 shadow-sm">
+            <div className="rounded-xl border border-[#E5E7EB] bg-white p-6 shadow-sm">
               <div className="mb-4 flex items-center justify-between">
                 <h2 className="text-lg font-semibold flex items-center gap-2">
                   <FileText className="h-5 w-5" />
-                  Documents ({procedure.documents?.length || 0})
+                  Documents ({procedure.documents?.filter(doc => 
+                    !doc.fileName.toLowerCase().includes("fusionné") && 
+                    !doc.fileName.toLowerCase().includes("merged") &&
+                    !doc.fileName.toLowerCase().startsWith("merged-") &&
+                    !(doc.type === "AUTRES_PREUVES" && doc.fileName.toLowerCase().includes("document fusionné"))
+                  ).length || 0})
                 </h2>
                 <div className="flex gap-2">
                   {/* Bouton pour gérer les numéros de facture */}
@@ -1436,7 +1700,7 @@ export default function ProcedureDetailPage() {
 
               {/* Section de gestion des informations de facture */}
               {showManageInvoiceNumbers && (
-                <div className="mb-6 rounded-lg border bg-muted/50 p-4">
+                <div className="mb-6 rounded-xl border border-[#E5E7EB] bg-[#E5E7EB]/30 p-4">
                   <h3 className="mb-4 text-sm font-semibold">Gérer les informations des factures</h3>
                   <div className="space-y-4">
                     {procedure.documents
@@ -1542,7 +1806,7 @@ export default function ProcedureDetailPage() {
 
               {/* Formulaire d'ajout de documents */}
               {showAddDocuments && user && (
-                <div className="mb-6 rounded-lg border bg-muted/50 p-4">
+                <div className="mb-6 rounded-xl border border-[#E5E7EB] bg-[#E5E7EB]/30 p-4">
                   <h3 className="mb-4 text-sm font-semibold">Ajouter des documents</h3>
                   <div className="space-y-4">
                     {[
@@ -1692,17 +1956,119 @@ export default function ProcedureDetailPage() {
                 </div>
               )}
 
+              {/* Section des documents d'injonction (Kbis et Attestation) */}
+              {(procedure.status === "INJONCTION_DE_PAIEMENT_PAYER" || procedure.status === "INJONCTION_DE_PAIEMENT") && (
+                <div className="mb-6 space-y-4">
+                  <div className="border-t border-[#E5E7EB] pt-4">
+                    <h3 className="text-lg font-semibold text-[#0F172A] mb-4 flex items-center gap-2">
+                      <Scale className="h-5 w-5 text-amber-600" />
+                      Documents d'injonction de paiement
+                    </h3>
+                    {injonctionFiles ? (
+                      <div className="space-y-4">
+                        {injonctionFiles.kbisFilePath && (
+                          <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+                            <div className="mb-3 flex items-start justify-between">
+                              <div className="flex-1">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <File className="h-4 w-4 text-amber-600" />
+                                  <span className="text-sm font-medium text-amber-900">Kbis de moins de 3 mois</span>
+                                </div>
+                                <p className="text-xs text-amber-700 mt-1">
+                                  Document requis pour l'injonction de paiement
+                                </p>
+                              </div>
+                              <a
+                                href={injonctionFiles.kbisFilePath}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="ml-4"
+                              >
+                                <Button variant="outline" size="sm">
+                                  <Download className="mr-2 h-4 w-4" />
+                                  Télécharger
+                                </Button>
+                              </a>
+                            </div>
+                            <div className="mt-3 rounded border bg-white">
+                              <DocumentViewer
+                                url={injonctionFiles.kbisFilePath}
+                                mimeType="application/pdf"
+                                fileName="Kbis"
+                              />
+                            </div>
+                          </div>
+                        )}
+                        {injonctionFiles.attestationFilePath && (
+                          <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+                            <div className="mb-3 flex items-start justify-between">
+                              <div className="flex-1">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <FileText className="h-4 w-4 text-amber-600" />
+                                  <span className="text-sm font-medium text-amber-900">Attestation sur l'honneur signée</span>
+                                </div>
+                                <p className="text-xs text-amber-700 mt-1">
+                                  Attestation signée requise pour l'injonction de paiement
+                                </p>
+                              </div>
+                              <a
+                                href={injonctionFiles.attestationFilePath}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="ml-4"
+                              >
+                                <Button variant="outline" size="sm">
+                                  <Download className="mr-2 h-4 w-4" />
+                                  Télécharger
+                                </Button>
+                              </a>
+                            </div>
+                            <div className="mt-3 rounded border bg-white">
+                              <DocumentViewer
+                                url={injonctionFiles.attestationFilePath}
+                                mimeType="application/pdf"
+                                fileName="Attestation sur l'honneur"
+                              />
+                            </div>
+                          </div>
+                        )}
+                        {!injonctionFiles.kbisFilePath && !injonctionFiles.attestationFilePath && (
+                          <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+                            <p className="text-sm text-amber-700">
+                              Aucun document d'injonction disponible pour ce dossier.
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+                        <p className="text-sm text-amber-700">
+                          Chargement des documents d'injonction...
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {!procedure.documents || procedure.documents.length === 0 ? (
                 <p className="text-sm text-muted-foreground">Aucun document associé</p>
               ) : (
                 <div className="space-y-4">
-                  {procedure.documents?.map((document) => {
+                  {procedure.documents
+                    ?.filter(doc => 
+                      !doc.fileName.toLowerCase().includes("fusionné") && 
+                      !doc.fileName.toLowerCase().includes("merged") &&
+                      !doc.fileName.toLowerCase().startsWith("merged-") &&
+                      !(doc.type === "AUTRES_PREUVES" && doc.fileName.toLowerCase().includes("document fusionné"))
+                    )
+                    ?.map((document) => {
                     // Vérifier que le document a une URL valide
                     if (!document.filePath || document.filePath.trim() === "") {
                       return (
                         <div
                           key={document.id}
-                          className="rounded-lg border bg-muted/50 p-4"
+                          className="rounded-xl border border-[#E5E7EB] bg-[#E5E7EB]/30 p-4"
                         >
                           <div className="flex items-center gap-2 text-sm text-destructive">
                             <FileText className="h-4 w-4" />
@@ -1715,7 +2081,7 @@ export default function ProcedureDetailPage() {
                     return (
                       <div
                         key={document.id}
-                        className="rounded-lg border bg-muted/50 p-4"
+                        className="rounded-xl border border-[#E5E7EB] bg-[#E5E7EB]/30 p-4"
                       >
                         <div className="mb-3 flex items-start justify-between">
                           <div className="flex-1">
@@ -1783,7 +2149,8 @@ export default function ProcedureDetailPage() {
               )}
             </div>
           </div>
-        </div>
+          </div>
+        )}
       </div>
 
       {/* Sidebar pour la mise en demeure */}
@@ -1838,6 +2205,123 @@ export default function ProcedureDetailPage() {
                 setShowEcheancier(false);
               }}
             />
+          )}
+        </SheetContent>
+      </Sheet>
+
+      {/* Sheet pour le formulaire d'envoi LRAR */}
+      <Sheet open={showSendLRARForm} onOpenChange={setShowSendLRARForm}>
+        <SheetContent className="w-full sm:max-w-2xl overflow-y-auto">
+          <SheetHeader>
+            <SheetTitle>Dernières informations d'envoi</SheetTitle>
+            <SheetDescription>
+              Complétez les informations avant d'envoyer le recommandé
+            </SheetDescription>
+          </SheetHeader>
+          {procedure && (
+            <div className="space-y-6 py-6">
+              {/* Informations du client */}
+              <div className="rounded-lg border border-[#E5E7EB] bg-[#E5E7EB]/30 p-4">
+                <h4 className="text-sm font-semibold text-[#0F172A] mb-3">Destinataire</h4>
+                <div className="space-y-2 text-sm">
+                  <div>
+                    <span className="text-[#0F172A]/70">Nom :</span>{" "}
+                    <span className="font-medium text-[#0F172A]">
+                      {procedure.client?.prenom} {procedure.client?.nom}
+                    </span>
+                  </div>
+                  {procedure.client?.nomSociete && (
+                    <div>
+                      <span className="text-[#0F172A]/70">Société :</span>{" "}
+                      <span className="font-medium text-[#0F172A]">
+                        {procedure.client.nomSociete}
+                      </span>
+                    </div>
+                  )}
+                  {procedure.client?.adresse && (
+                    <div>
+                      <span className="text-[#0F172A]/70">Adresse :</span>{" "}
+                      <span className="font-medium text-[#0F172A]">
+                        {procedure.client.adresse}
+                        {procedure.client.codePostal && `, ${procedure.client.codePostal}`}
+                        {procedure.client.ville && ` ${procedure.client.ville}`}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Formulaire pour les pénalités */}
+              <div>
+                <Label htmlFor="penalites" className="text-[#0F172A] font-semibold mb-2 block">
+                  Pénalités dues (€) *
+                </Label>
+                <Input
+                  id="penalites"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={penalites}
+                  onChange={(e) => setPenalites(e.target.value)}
+                  placeholder="0.00"
+                  className="text-lg font-medium"
+                  required
+                />
+                <p className="text-xs text-[#0F172A]/60 mt-1">
+                  Montant des pénalités de retard à réclamer
+                </p>
+              </div>
+
+              {/* Formulaire pour le commentaire */}
+              <div>
+                <Label htmlFor="commentaireLRAR" className="text-[#0F172A] font-semibold mb-2 block">
+                  Commentaire (optionnel)
+                </Label>
+                <Textarea
+                  id="commentaireLRAR"
+                  value={commentaireLRAR}
+                  onChange={(e) => setCommentaireLRAR(e.target.value)}
+                  placeholder="Ajoutez un commentaire sur l'envoi du recommandé, des informations complémentaires, etc..."
+                  className="min-h-[150px] resize-none"
+                />
+                <p className="text-xs text-[#0F172A]/60 mt-1">
+                  Ce commentaire sera visible par le client et inclus dans l'email de notification
+                </p>
+              </div>
+
+              {/* Message d'erreur */}
+              {error && (
+                <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+                  {error}
+                </div>
+              )}
+
+              {/* Bouton de confirmation */}
+              <Button
+                onClick={handleSendLRAR}
+                disabled={sendingLRAR || !penalites}
+                className="w-full bg-[#16A34A] hover:bg-[#16A34A]/90 text-white shadow-md hover:shadow-lg transition-all"
+                size="lg"
+              >
+                {sendingLRAR ? (
+                  <>
+                    <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                    Envoi en cours...
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="mr-2 h-5 w-5" />
+                    Confirmer l'envoi du recommandé
+                  </>
+                )}
+              </Button>
+
+              <div className="rounded-lg border border-[#2563EB]/20 bg-[#2563EB]/5 p-4">
+                <p className="text-xs text-[#0F172A]/70 text-center">
+                  <strong className="text-[#0F172A]">Important :</strong> Une fois confirmé, un email sera automatiquement envoyé au client pour l'informer de l'envoi du recommandé.
+                </p>
+              </div>
+            </div>
           )}
         </SheetContent>
       </Sheet>

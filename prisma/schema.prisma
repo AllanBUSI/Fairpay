@@ -22,7 +22,12 @@ enum ProcedureStatus {
   EN_ATTENTE_RETOUR
   LRAR
   LRAR_ECHEANCIER
+  LRAR_FINI
   BROUILLONS
+  ENVOYE
+  INJONCTION_DE_PAIEMENT
+  INJONCTION_DE_PAIEMENT_PAYER
+  INJONCTION_DE_PAIEMENT_FINI
 }
 
 enum DossierAcceptation {
@@ -48,6 +53,7 @@ enum UserRole {
 
 enum PaymentStatus {
   PENDING
+  OPEN
   SUCCEEDED
   FAILED
   CANCELED
@@ -128,6 +134,9 @@ model Procedure {
   paymentStatus    PaymentStatus? // Statut du paiement
   hasEcheancier    Boolean            @default(false) // Indique si un écheancier est inclus
   hasFacturation    Boolean            @default(false) // Indique si la facturation était active lors de la création
+  penalites        Float?             @default(0) // Pénalités dues
+  dateEnvoiLRAR    DateTime? // Date d'envoi du recommandé
+  commentaireLRAR  String?            @db.Text // Commentaire lors de l'envoi du recommandé
   createdAt        DateTime           @default(now())
   updatedAt        DateTime           @updatedAt
 

@@ -4,7 +4,7 @@ import { supabaseAdmin } from "@/lib/supabase";
 import { prisma } from "@/lib/prisma";
 import { DocumentType } from "@/app/generated/prisma/enums";
 
-const BUCKET_NAME = process.env.SUPABASE_BUCKET_NAME || "File";
+const BUCKET_NAME = process.env["SUPABASE_BUCKET_NAME"] || "File";
 
 export async function POST(
   request: NextRequest,
@@ -67,7 +67,7 @@ export async function POST(
       );
     }
 
-    const { data: uploadData, error: uploadError } = await supabaseAdmin.storage
+    const { error: uploadError } = await supabaseAdmin.storage
       .from(BUCKET_NAME)
       .upload(filePath, buffer, {
         contentType: "application/pdf",

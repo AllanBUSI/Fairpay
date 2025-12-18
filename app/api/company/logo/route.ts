@@ -5,7 +5,7 @@ import { supabaseAdmin } from "@/lib/supabase";
 
 const ALLOWED_MIME_TYPES = ["image/jpeg", "image/jpg", "image/png", "image/gif", "image/webp"];
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
-const BUCKET_NAME = process.env.SUPABASE_BUCKET_NAME || "File";
+const BUCKET_NAME = process.env["SUPABASE_BUCKET_NAME"] || "File";
 
 export async function POST(request: NextRequest) {
   try {
@@ -72,7 +72,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Upload vers Supabase
-    const { data: uploadData, error: uploadError } = await supabaseAdmin.storage
+    const { error: uploadError } = await supabaseAdmin.storage
       .from(BUCKET_NAME)
       .upload(fileName, buffer, {
         contentType: file.type,

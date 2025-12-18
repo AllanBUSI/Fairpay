@@ -3,7 +3,7 @@ import Stripe from "stripe";
 import { prisma } from "@/lib/prisma";
 import { verifyToken } from "@/lib/jwt";
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
+const stripe = new Stripe(process.env["STRIPE_SECRET_KEY"] || "", {
   apiVersion: "2025-11-17.clover",
 });
 
@@ -43,7 +43,7 @@ export async function GET(request: NextRequest) {
     
     // Log des détails de chaque facture pour déboguer
     invoices.data.forEach((inv, index) => {
-      console.log(`  Facture ${index + 1}: ID=${inv.id}, Status=${inv.status}, Amount=${inv.amount_paid || inv.total}, Number=${inv.number}`);
+      console.log(`  Facture ${index + 1}: ID=${inv.id}, Status=${inv.status}, Amount_paid=${inv.amount_paid}, Amount_due=${inv.amount_due}, Total=${inv.total}, Number=${inv.number}, Metadata=${JSON.stringify(inv.metadata)}`);
     });
 
     // Formater les factures pour l'affichage
@@ -52,14 +52,23 @@ export async function GET(request: NextRequest) {
                          invoice.lines.data[0]?.description || 
                          (invoice.lines.data.length > 0 ? invoice.lines.data.map((line: any) => line.description).join(", ") : "Facture");
       
-      // Calculer le montant : utiliser amount_paid si disponible, sinon total, sinon subtotal
+      // Calculer le montant : 
+      // - Pour les factures payées (paid), utiliser amount_paid
+      // - Pour les factures ouvertes (open), utiliser total ou amount_due
+      // - Sinon, utiliser total ou subtotal
       let amount = 0;
-      if (invoice.amount_paid > 0) {
+      if (invoice.status === "paid" && invoice.amount_paid > 0) {
         amount = invoice.amount_paid / 100;
+      } else if (invoice.status === "open" || invoice.status === "draft") {
+        // Pour les factures ouvertes, utiliser amount_due ou total
+        amount = (invoice.amount_due > 0 ? invoice.amount_due : invoice.total) / 100;
       } else if (invoice.total > 0) {
         amount = invoice.total / 100;
       } else if (invoice.subtotal > 0) {
         amount = invoice.subtotal / 100;
+      } else if (invoice.amount_paid > 0) {
+        // Dernier recours : amount_paid
+        amount = invoice.amount_paid / 100;
       }
 
       return {
@@ -80,6 +89,7 @@ export async function GET(request: NextRequest) {
           : null,
         periodStart: invoice.period_start ? new Date(invoice.period_start * 1000).toISOString() : null,
         periodEnd: invoice.period_end ? new Date(invoice.period_end * 1000).toISOString() : null,
+        metadata: invoice.metadata || {}, // Inclure les métadonnées pour le filtrage
       };
     });
 

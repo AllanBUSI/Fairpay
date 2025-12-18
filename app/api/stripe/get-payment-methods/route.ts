@@ -3,7 +3,7 @@ import Stripe from "stripe";
 import { prisma } from "@/lib/prisma";
 import { verifyToken } from "@/lib/jwt";
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
+const stripe = new Stripe(process.env["STRIPE_SECRET_KEY"] || "", {
   apiVersion: "2025-11-17.clover",
 });
 

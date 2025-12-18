@@ -27,17 +27,17 @@ export async function GET(request: NextRequest) {
       where.userId = user.userId;
     }
     
-    // Si l'utilisateur est AVOCAT, il ne peut voir que les dossiers qui lui sont assignés
-    // ou les nouveaux dossiers non assignés
-    if (user.role === UserRole.AVOCAT) {
-      if (statusParam === "NOUVEAU" || statusParam === "all") {
-        // Pour les nouveaux dossiers ou la vue "all", on montre les dossiers non assignés ou assignés à cet avocat
+    // Si l'utilisateur est AVOCAT ou JURISTE, il peut voir les dossiers qui lui sont assignés
+    // ou les nouveaux dossiers non assignés / les injonctions non assignées
+    if (user.role === UserRole.AVOCAT || user.role === UserRole.JURISTE) {
+      if (statusParam === "NOUVEAU" || statusParam === "INJONCTION_DE_PAIEMENT" || statusParam === "INJONCTION_DE_PAIEMENT_PAYER" || statusParam === "INJONCTION_DE_PAIEMENT_FINI" || statusParam === "all") {
+        // Pour les nouveaux dossiers, les injonctions ou la vue "all", on montre les dossiers non assignés ou assignés à cet avocat/juriste
         where.OR = [
           { avocatId: null },
           { avocatId: user.userId },
         ];
       } else {
-        // Pour les autres statuts, on montre uniquement les dossiers assignés à cet avocat
+        // Pour les autres statuts, on montre uniquement les dossiers assignés à cet avocat/juriste
         where.avocatId = user.userId;
       }
     }
@@ -51,16 +51,28 @@ export async function GET(request: NextRequest) {
         ProcedureStatus.ANNULE,
         ProcedureStatus.EN_ATTENTE_REPONSE,
         ProcedureStatus.EN_ATTENTE_RETOUR,
+        ProcedureStatus.LRAR,
+        ProcedureStatus.LRAR_ECHEANCIER,
+        ProcedureStatus.LRAR_FINI,
         ProcedureStatus.BROUILLONS,
+        ProcedureStatus.ENVOYE,
+        ProcedureStatus.INJONCTION_DE_PAIEMENT,
+        ProcedureStatus.INJONCTION_DE_PAIEMENT_PAYER,
+        ProcedureStatus.INJONCTION_DE_PAIEMENT_FINI,
       ];
       
       if (validStatuses.includes(statusParam as ProcedureStatus)) {
         where.status = statusParam as ProcedureStatus;
       }
     } else {
-      // Si aucun statut spécifique n'est demandé (y compris "all"), exclure les brouillons
+      // Si aucun statut spécifique n'est demandé (y compris "all"), exclure les brouillons et les injonctions
+      // car ces statuts ne sont pas affichés dans le dashboard principal
       where.status = {
-        not: ProcedureStatus.BROUILLONS,
+        notIn: [
+          ProcedureStatus.BROUILLONS,
+          ProcedureStatus.INJONCTION_DE_PAIEMENT,
+          ProcedureStatus.INJONCTION_DE_PAIEMENT_PAYER,
+        ],
       };
     }
 
@@ -74,6 +86,7 @@ export async function GET(request: NextRequest) {
         dateFactureEchue: true,
         montantDue: true,
         paymentStatus: true,
+        dateEnvoiLRAR: true,
         createdAt: true,
         updatedAt: true,
         client: {
@@ -149,27 +162,42 @@ export async function POST(request: NextRequest) {
     
     if (!isDraft) {
       // Validation pour les dossiers complets
-      if (!nom || !prenom || !siret || !contexte || !dateFactureEchue || !email || !telephone || !adresse || !codePostal || !ville) {
+      // Le SIRET n'est obligatoire que pour les entreprises (pas pour les particuliers)
+      const isParticulier = siret && siret.startsWith("PARTICULIER-");
+      if (!nom || !prenom || !contexte || !dateFactureEchue || !email || !telephone || !adresse || !codePostal || !ville) {
         return NextResponse.json(
           { error: "Tous les champs obligatoires doivent être remplis" },
           { status: 400 }
         );
       }
+      // Pour les entreprises, le SIRET doit être présent et ne pas commencer par "PARTICULIER-"
+      if (!isParticulier && !siret) {
+        return NextResponse.json(
+          { error: "Le SIRET est obligatoire pour une entreprise" },
+          { status: 400 }
+        );
+      }
     } else {
       // Pour les brouillons, utiliser des valeurs par défaut si manquantes
-      if (!nom || !prenom || !siret) {
+      if (!nom || !prenom) {
         // Ces champs sont nécessaires pour créer le client, utiliser des valeurs par défaut
         if (!nom) nom = "Non renseigné";
         if (!prenom) prenom = "Non renseigné";
-        if (!siret) siret = `DRAFT-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`; // SIRET temporaire unique
+      }
+      // Générer un SIRET si manquant (pour les particuliers ou brouillons)
+      if (!siret) {
+        siret = `DRAFT-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`; // SIRET temporaire unique
       }
     }
 
     // Vérifier ou créer le client
-    // Pour les brouillons avec SIRET temporaire, créer toujours un nouveau client
+    // Pour les brouillons avec SIRET temporaire ou les particuliers, créer toujours un nouveau client
     let client;
-    if (isDraft && siret.startsWith("DRAFT-")) {
-      // Créer un nouveau client pour le brouillon
+    const isParticulier = siret.startsWith("PARTICULIER-");
+    const isDraftSiret = siret.startsWith("DRAFT-");
+    
+    if (isDraft && (isDraftSiret || isParticulier)) {
+      // Créer un nouveau client pour le brouillon ou le particulier
       client = await prisma.client.create({
         data: {
           nom,
@@ -183,7 +211,23 @@ export async function POST(request: NextRequest) {
           telephone: telephone || null,
         },
       });
+    } else if (isParticulier) {
+      // Pour les particuliers (même non brouillons), créer toujours un nouveau client car chaque particulier a un SIRET unique
+      client = await prisma.client.create({
+        data: {
+          nom,
+          prenom,
+          siret,
+          nomSociete: null, // Les particuliers n'ont pas de nom de société
+          adresse: adresse || null,
+          codePostal: codePostal || null,
+          ville: ville || null,
+          email: email || null,
+          telephone: telephone || null,
+        },
+      });
     } else {
+      // Pour les entreprises, chercher ou créer le client par SIRET
       client = await prisma.client.findUnique({
         where: { siret },
       });

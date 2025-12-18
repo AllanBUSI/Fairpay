@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
 import { canUploadDocuments } from "@/lib/permissions";
-import { supabase, supabaseAdmin } from "@/lib/supabase";
+import { supabaseAdmin } from "@/lib/supabase";
 
 const ALLOWED_MIME_TYPES = [
   "image/jpeg",
@@ -13,7 +13,7 @@ const ALLOWED_MIME_TYPES = [
 ];
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
-const BUCKET_NAME = process.env.SUPABASE_BUCKET_NAME || "File"; // Nom du bucket Supabase Storage
+const BUCKET_NAME = process.env["SUPABASE_BUCKET_NAME"] || "File"; // Nom du bucket Supabase Storage
 
 export async function POST(request: NextRequest) {
   try {
@@ -91,7 +91,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Upload vers Supabase Storage avec le client admin
-    const { data, error: uploadError } = await supabaseAdmin.storage
+    const { error: uploadError } = await supabaseAdmin.storage
       .from(BUCKET_NAME)
       .upload(filePath, buffer, {
         contentType: file.type,

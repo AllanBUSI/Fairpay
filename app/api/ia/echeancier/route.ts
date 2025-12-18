@@ -4,9 +4,6 @@ import { requireAuth } from "@/lib/auth";
 
 // Fonction pour convertir un montant en lettres
 function convertirMontantEnLettres(montant: number): string {
-  const unite = ["", "un", "deux", "trois", "quatre", "cinq", "six", "sept", "huit", "neuf"];
-  const dizaine = ["", "", "vingt", "trente", "quarante", "cinquante", "soixante", "soixante", "quatre-vingt", "quatre-vingt"];
-  const special = ["dix", "onze", "douze", "treize", "quatorze", "quinze", "seize", "dix-sept", "dix-huit", "dix-neuf"];
   
   if (montant === 0) return "zéro";
   if (montant >= 1000) {
@@ -23,8 +20,8 @@ function convertirNombreEnLettres(n: number): string {
   const special = ["dix", "onze", "douze", "treize", "quatorze", "quinze", "seize", "dix-sept", "dix-huit", "dix-neuf"];
   
   if (n === 0) return "";
-  if (n < 10) return unite[n];
-  if (n < 20) return special[n - 10];
+  if (n < 10) return unite[n] || "" ;
+  if (n < 20) return special[n - 10] || "";
   if (n < 100) {
     const d = Math.floor(n / 10);
     const u = n % 10;
@@ -96,7 +93,15 @@ export async function POST(request: NextRequest) {
     const avocat = procedure.avocat;
 
     // Récupérer les informations de l'entreprise/cabinet de l'avocat
-    let avocatCompany = null;
+    let avocatCompany: {
+      email: string | null;
+      adresse: string | null;
+      codePostal: string | null;
+      ville: string | null;
+      telephone: string | null;
+      nomSociete: string;
+      logoUrl: string | null;
+    } | null = null;
     if (avocat) {
       avocatCompany = await prisma.company.findUnique({
         where: { userId: avocat.id },
@@ -107,7 +112,14 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    let creancierCompany = null;
+    let creancierCompany: {
+      email: string | null;
+      adresse: string | null;
+      codePostal: string | null;
+      ville: string | null;
+      telephone: string | null;
+      nomSociete: string;
+    } | null = null;
     if (demandeur) {
       creancierCompany = await prisma.company.findUnique({
         where: { userId: demandeur.id },
@@ -152,7 +164,6 @@ export async function POST(request: NextRequest) {
     // Informations du créancier - Toujours "Learni"
     const nomCreancier = "Learni";
     const qualiteCreancier = "société";
-    const adresseCreancier = creancierCompany?.adresse || demandeur?.adresse || "adresse à préciser";
     const adresseCompleteCreancier = creancierCompany
       ? `${creancierCompany.adresse || ""}${creancierCompany.codePostal && creancierCompany.ville ? `, ${creancierCompany.codePostal} ${creancierCompany.ville}` : ""}`.trim()
       : `${demandeur?.adresse || ""}${demandeur?.codePostal && demandeur?.ville ? `, ${demandeur.codePostal} ${demandeur.ville}` : ""}`.trim();
@@ -170,7 +181,6 @@ export async function POST(request: NextRequest) {
 
     // Nom complet du destinataire
     const nomDestinataire = client.nomSociete || `${client.prenom} ${client.nom}`.trim();
-    const adresseCompleteDestinataire = `${client.adresse || ""}${client.codePostal && client.ville ? `, ${client.codePostal} ${client.ville}` : client.ville ? `, ${client.ville}` : ""}`.trim();
 
     // Formater les échéances - s'assurer que toutes les dates sont le 5 du mois
     const echeancesFormatees = echeancier.map((e, index) => {

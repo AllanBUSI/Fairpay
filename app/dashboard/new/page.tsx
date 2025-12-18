@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { FileUpload } from "@/components/ui/file-upload";
-import { Plus, X, ShoppingCart } from "lucide-react";
+import { ShoppingCart } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -16,6 +16,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { ProcedureStatus, UserRole } from "@/app/generated/prisma/enums";
+import { StripePaymentForm } from "@/components/ui/stripe-payment-form";
 
 interface UploadedFile {
   fileName: string;
@@ -47,19 +48,10 @@ export default function NewProcedurePage() {
   const [hasFacturation, setHasFacturation] = useState(false);
   const [isSubscribed, setIsSubscribed] = useState(false);
   const [showFacturationPrompt, setShowFacturationPrompt] = useState(false);
-  const [promoCode, setPromoCode] = useState("");
-  const [promoCodeApplied, setPromoCodeApplied] = useState(false);
-  const [promoDiscount, setPromoDiscount] = useState(0);
-  const [promoError, setPromoError] = useState("");
-  const [validatingPromo, setValidatingPromo] = useState(false);
-  const [promoCouponId, setPromoCouponId] = useState<string | null>(null);
   const [isEditingDraft, setIsEditingDraft] = useState(false);
-  const [priceIds, setPriceIds] = useState<{
-    abonnement: string | null;
-    miseEnDemeureSansAbo: string | null;
-    miseEnDemeureAvecAbo: string | null;
-    echeancier: string | null;
-  } | null>(null);
+  const [showPaymentForm, setShowPaymentForm] = useState(false);
+  const [paymentClientSecret, setPaymentClientSecret] = useState<string | null>(null);
+  const [paymentProcedureId, setPaymentProcedureId] = useState<string | null>(null);
 
   useEffect(() => {
     const checkUserRoleAndLoadDraft = async () => {
@@ -108,24 +100,7 @@ export default function NewProcedurePage() {
     };
 
     checkUserRoleAndLoadDraft();
-    fetchPriceIds();
   }, [router, procedureId]);
-
-  const fetchPriceIds = async () => {
-    try {
-      const response = await fetch("/api/stripe/get-price-ids");
-      if (response.ok) {
-        const data = await response.json();
-        if (data.priceIds) {
-          setPriceIds(data.priceIds);
-        }
-      } else {
-        console.error("Erreur lors de la récupération des Price ID");
-      }
-    } catch (err) {
-      console.error("Erreur lors de la récupération des Price ID:", err);
-    }
-  };
 
   const loadDraftProcedure = async (id: string, token: string) => {
     try {
@@ -149,10 +124,15 @@ export default function NewProcedurePage() {
 
         // Pré-remplir le formulaire avec les données du brouillon
         if (procedure.client) {
+          // Détecter le type de client en fonction du SIRET
+          const siret = procedure.client.siret ?? "";
+          const isParticulier = siret.startsWith("PARTICULIER-");
+          setClientType(isParticulier ? "particulier" : "entreprise");
+
           setFormData({
             nom: procedure.client.nom ?? "",
             prenom: procedure.client.prenom ?? "",
-            siret: procedure.client.siret ?? "",
+            siret: isParticulier ? "" : siret, // Ne pas afficher le SIRET généré pour les particuliers
             nomSociete: procedure.client.nomSociete ?? "",
             adresse: procedure.client.adresse ?? "",
             codePostal: procedure.client.codePostal ?? "",
@@ -163,15 +143,15 @@ export default function NewProcedurePage() {
             contexte: procedure.contexte ?? "",
             dateFactureEchue: procedure.dateFactureEchue
               ? new Date(procedure.dateFactureEchue).toISOString().split("T")[0]
-              : "",
-            montantDue: procedure.montantDue != null ? procedure.montantDue.toString() : "",
+              : undefined,
+            montantDue: procedure.montantDue != null ? procedure.montantDue.toString() : undefined,
             montantTTC: procedure.montantTTC ?? true,
             dateRelance: procedure.dateRelance
               ? new Date(procedure.dateRelance).toISOString().split("T")[0]
-              : "",
+              : undefined,
             dateRelance2: procedure.dateRelance2
               ? new Date(procedure.dateRelance2).toISOString().split("T")[0]
-              : "",
+              : undefined,
           });
         }
 
@@ -193,7 +173,7 @@ export default function NewProcedurePage() {
             montantTTC: boolean;
           }> = {};
 
-          procedure.documents.forEach((doc: any, index: number) => {
+          procedure.documents.forEach((doc: any) => {
             const file: UploadedFile = {
               fileName: doc.fileName,
               filePath: doc.filePath,
@@ -202,17 +182,24 @@ export default function NewProcedurePage() {
               type: doc.type,
             };
 
-            filesByType[doc.type].push(file);
+            const docType = doc.type as keyof typeof filesByType;
+            const typeArray = filesByType[docType];
+            if (typeArray) {
+              typeArray.push(file);
+            }
 
             // Si c'est une facture, récupérer les infos
             if (doc.type === "FACTURE") {
-              const factureIndex = filesByType.FACTURE.length - 1;
+              const facturesArray = filesByType["FACTURE"];
+              const factureIndex = facturesArray ? facturesArray.length - 1 : 0;
               facturesInfo[factureIndex] = {
                 numeroFacture: doc.numeroFacture ?? "",
-                dateFactureEchue: doc.dateFactureEchue
-                  ? new Date(doc.dateFactureEchue).toISOString().split("T")[0]
-                  : "",
-                montantDue: doc.montantDue != null ? doc.montantDue.toString() : "",
+                ...(doc.dateFactureEchue && {
+                  dateFactureEchue: new Date(doc.dateFactureEchue).toISOString().split("T")[0],
+                }),
+                ...(doc.montantDue != null && {
+                  montantDue: doc.montantDue.toString(),
+                }),
                 montantTTC: doc.montantTTC ?? true,
               };
             }
@@ -265,7 +252,25 @@ export default function NewProcedurePage() {
   };
 
   // Form state
-  const [formData, setFormData] = useState({
+  const [clientType, setClientType] = useState<"particulier" | "entreprise">("entreprise");
+  const [formData, setFormData] = useState<{
+    nom: string;
+    prenom: string;
+    siret: string;
+    nomSociete: string;
+    adresse: string;
+    codePostal: string;
+    ville: string;
+    email: string;
+    telephone: string;
+    numeroFacture: string;
+    contexte: string;
+    dateFactureEchue: string | undefined;
+    montantDue: string | undefined;
+    montantTTC: boolean;
+    dateRelance: string | undefined;
+    dateRelance2: string | undefined;
+  }>({
     nom: "",
     prenom: "",
     siret: "",
@@ -277,21 +282,21 @@ export default function NewProcedurePage() {
     email: "",
     telephone: "",
     contexte: "",
-    dateFactureEchue: "",
-    montantDue: "",
+    dateFactureEchue: undefined,
+    montantDue: undefined,
     montantTTC: true,
-    dateRelance: "",
-    dateRelance2: "",
+    dateRelance: undefined,
+    dateRelance2: undefined,
   });
 
   // Informations pour chaque facture
   interface FactureInfo {
     numeroFacture: string;
-    dateFactureEchue: string;
-    montantDue: string;
+    dateFactureEchue?: string;
+    montantDue?: string;
     montantTTC: boolean;
   }
-  const [facturesInfo, setFacturesInfo] = useState<Record<number, FactureInfo>>({});
+  const [facturesInfo, setFacturesInfo] = useState<Partial<Record<number, FactureInfo>>>({});
 
   // Écheancier state
   const [hasEcheancier, setHasEcheancier] = useState(false);
@@ -319,14 +324,21 @@ export default function NewProcedurePage() {
     e.preventDefault();
     setError("");
 
+    // Valider le SIRET pour les entreprises
+    if (clientType === "entreprise" && !formData.siret?.trim()) {
+      setError("Le SIRET est obligatoire pour une entreprise.");
+      return;
+    }
+
     // Vérifier que la facture est présente (obligatoire)
-    if (filesByType.FACTURE.length === 0) {
+    const facturesArray = filesByType["FACTURE"];
+    if (!facturesArray || facturesArray.length === 0) {
       setError("La facture est obligatoire. Veuillez ajouter au moins une facture.");
       return;
     }
 
     // Vérifier que toutes les factures ont leurs informations complètes
-    const factures = filesByType.FACTURE;
+    const factures = facturesArray;
     for (let i = 0; i < factures.length; i++) {
       const info = facturesInfo[i];
       if (!info || !info.numeroFacture?.trim()) {
@@ -385,10 +397,10 @@ export default function NewProcedurePage() {
       fileSize: number;
       mimeType: string;
       type: string;
-      numeroFacture?: string | null;
-      dateFactureEchue?: string | null;
-      montantDue?: number | null;
-      montantTTC?: boolean | null;
+          numeroFacture?: string | null;
+          dateFactureEchue?: string | null;
+          montantDue?: number | null;
+          montantTTC?: boolean | null;
     }> = [];
     
     Object.entries(filesByType).forEach(([type, files]) => {
@@ -414,7 +426,7 @@ export default function NewProcedurePage() {
           if (info) {
             documentData.numeroFacture = info.numeroFacture.trim() || null;
             documentData.dateFactureEchue = info.dateFactureEchue || null;
-            documentData.montantDue = parseFloat(info.montantDue) || null;
+            documentData.montantDue = info.montantDue ? parseFloat(info.montantDue) : null;
             documentData.montantTTC = info.montantTTC ?? true;
           }
         }
@@ -424,7 +436,7 @@ export default function NewProcedurePage() {
     });
 
     // Générer l'écheancier automatiquement si activé
-    let echeancierData = null;
+      let echeancierData: Array<{ date: string; montant: number }> | null = null;
     if (hasEcheancier && nombreEcheances > 0 && nombreEcheances <= 5 && formData.montantDue) {
       const montantTotal = parseFloat(formData.montantDue);
       const montantParEcheance = montantTotal / nombreEcheances;
@@ -445,14 +457,28 @@ export default function NewProcedurePage() {
       }
     }
 
+    // Générer un SIRET unique pour les particuliers si nécessaire
+    let finalSiret = formData.siret;
+    if (clientType === "particulier" && !finalSiret) {
+      finalSiret = `PARTICULIER-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+    } else if (clientType === "particulier" && !finalSiret.startsWith("PARTICULIER-") && !finalSiret.startsWith("DRAFT-")) {
+      // Si c'est un particulier mais qu'un SIRET a été saisi, générer un identifiant unique
+      finalSiret = `PARTICULIER-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+    }
+
+    // Si l'utilisateur est déjà abonné, ne pas marquer hasFacturation pour éviter de créer un nouvel abonnement
+    const shouldIncludeSubscription = hasFacturation && !isSubscribed;
+
     return {
       ...formData,
+      siret: finalSiret,
+      nomSociete: clientType === "entreprise" ? formData.nomSociete : null,
       montantDue: formData.montantDue ? parseFloat(formData.montantDue) : null,
       status: ProcedureStatus.NOUVEAU,
       documents: allDocuments,
       echeancier: echeancierData,
       hasEcheancier,
-      hasFacturation,
+      hasFacturation: shouldIncludeSubscription, // Ne pas créer d'abonnement si déjà abonné
     };
   };
 
@@ -503,7 +529,7 @@ export default function NewProcedurePage() {
             const info = facturesInfo[index];
             if (info) {
               documentData.numeroFacture = info.numeroFacture?.trim() || null;
-              documentData.dateFactureEchue = info.dateFactureEchue || null;
+              documentData.dateFactureEchue = info.dateFactureEchue ? new Date(info.dateFactureEchue).toISOString() : null;
               documentData.montantDue = info.montantDue ? parseFloat(info.montantDue) : null;
               documentData.montantTTC = info.montantTTC !== undefined ? Boolean(info.montantTTC) : null;
             }
@@ -514,7 +540,7 @@ export default function NewProcedurePage() {
       });
 
       // Générer l'écheancier si les données sont disponibles
-      let echeancierData = null;
+      let echeancierData: Array<{ date: string; montant: number }> | null = null;
       if (hasEcheancier && nombreEcheances > 0 && nombreEcheances <= 5 && formData.montantDue) {
         const montantTotal = parseFloat(formData.montantDue);
         if (!isNaN(montantTotal) && montantTotal > 0) {
@@ -536,12 +562,20 @@ export default function NewProcedurePage() {
         }
       }
 
+      // Générer un SIRET unique pour les particuliers si nécessaire
+      let finalSiret = formData.siret;
+      if (clientType === "particulier" && !finalSiret) {
+        finalSiret = `PARTICULIER-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+      } else if (!finalSiret) {
+        finalSiret = `DRAFT-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+      }
+
       // Préparer les données avec des valeurs par défaut si manquantes
       const draftData = {
         nom: formData.nom || "Non renseigné",
         prenom: formData.prenom || "Non renseigné",
-        siret: formData.siret || `DRAFT-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`, // SIRET temporaire unique
-        nomSociete: formData.nomSociete || null,
+        siret: finalSiret,
+        nomSociete: clientType === "entreprise" ? (formData.nomSociete || null) : null,
         adresse: formData.adresse || null,
         codePostal: formData.codePostal || null,
         ville: formData.ville || null,
@@ -585,60 +619,6 @@ export default function NewProcedurePage() {
     }
   };
 
-  const handleValidatePromoCode = async () => {
-    if (!promoCode.trim()) {
-      setPromoError("Veuillez saisir un code promotionnel");
-      return;
-    }
-
-    setValidatingPromo(true);
-    setPromoError("");
-
-    try {
-      // Calculer le montant total HT
-      let totalHT = 0;
-      if (hasFacturation) {
-        totalHT = 29 + 99;
-      } else {
-        totalHT = 179;
-        if (hasEcheancier) {
-          totalHT += 49;
-        }
-      }
-
-      const response = await fetch("/api/promo/validate", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          code: promoCode.trim(),
-          amount: totalHT,
-        }),
-      });
-
-      const data = await response.json();
-
-      if (response.ok && data.valid) {
-        setPromoCodeApplied(true);
-        setPromoDiscount(data.discount);
-        setPromoCouponId(data.coupon?.id || null);
-        setPromoError("");
-      } else {
-        setPromoCodeApplied(false);
-        setPromoDiscount(0);
-        setPromoCouponId(null);
-        setPromoError(data.error || "Code promotionnel invalide");
-      }
-    } catch (err) {
-      setPromoCodeApplied(false);
-      setPromoDiscount(0);
-      setPromoCouponId(null);
-      setPromoError("Erreur lors de la validation du code");
-    } finally {
-      setValidatingPromo(false);
-    }
-  };
 
   const handleProcessPayment = async () => {
     // Préparer les données de la procédure
@@ -659,53 +639,81 @@ export default function NewProcedurePage() {
         return;
       }
 
-      // Calculer le montant total
-      let totalHT = 0;
-      if (hasFacturation) {
-        totalHT = 29 + 99;
-      } else {
-        totalHT = 179;
-        if (hasEcheancier) {
-          totalHT += 49;
+      // Si l'utilisateur veut un abonnement + mise en demeure, utiliser la nouvelle route
+      const shouldIncludeSubscription = hasFacturation && !isSubscribed;
+      
+      if (shouldIncludeSubscription) {
+        // Utiliser la nouvelle route pour créer l'abonnement avec 30 jours gratuits + paiement
+        const response = await fetch("/api/stripe/create-subscription-with-payment", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            procedureData: data,
+            procedureId: isEditingDraft ? procedureId : undefined,
+          }),
+        });
+
+        const result = await response.json();
+
+        if (!response.ok) {
+          throw new Error(result.error || "Erreur lors de la création de l'abonnement et du paiement");
         }
-      }
-      const totalTTC = totalHT * 1.20 - promoDiscount;
 
-      // Créer une session de checkout Stripe
-      const response = await fetch("/api/stripe/create-checkout-session", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          amount: totalTTC,
-          currency: "eur",
-          procedureData: data,
-          hasFacturation,
-          promoCode: promoCouponId || undefined,
-          procedureId: isEditingDraft ? procedureId : undefined,
-          successUrl: `${window.location.origin}/dashboard?payment=success&session_id={CHECKOUT_SESSION_ID}`,
-          cancelUrl: `${window.location.origin}/dashboard/new?payment=cancelled`,
-        }),
-      });
-
-      const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error(result.error || "Erreur lors de la création de la session de paiement");
-      }
-
-      // Rediriger vers Stripe Checkout
-      if (result.url) {
-        window.location.href = result.url;
+        // Afficher le formulaire de paiement interne
+        setPaymentClientSecret(result.clientSecret);
+        setPaymentProcedureId(result.procedureId);
+        setShowPaymentForm(true);
+        setShowCart(false);
+        setSubmitting(false);
       } else {
-        throw new Error("URL de paiement non disponible");
+        // Pour les paiements sans abonnement, utiliser PaymentIntent avec modal interne
+        const response = await fetch("/api/stripe/create-payment-simple", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            procedureData: data,
+            procedureId: isEditingDraft ? procedureId : undefined,
+            isSubscribed,
+            hasEcheancier,
+          }),
+        });
+
+        const result = await response.json();
+
+        if (!response.ok) {
+          throw new Error(result.error || "Erreur lors de la création du paiement");
+        }
+
+        // Afficher le formulaire de paiement interne
+        setPaymentClientSecret(result.clientSecret);
+        setPaymentProcedureId(result.procedureId);
+        setShowPaymentForm(true);
+        setShowCart(false);
+        setSubmitting(false);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erreur lors du traitement du paiement");
       setSubmitting(false);
     }
+  };
+
+  const handlePaymentSuccess = async () => {
+    setShowPaymentForm(false);
+    setPaymentClientSecret(null);
+    setPaymentProcedureId(null);
+    // Rediriger vers le dashboard
+    router.push("/dashboard?payment=success");
+  };
+
+  const handlePaymentError = (error: string) => {
+    setError(error);
+    setShowPaymentForm(false);
   };
 
 
@@ -747,6 +755,28 @@ export default function NewProcedurePage() {
             {/* Client Information */}
             <div>
               <h2 className="mb-4 text-lg font-semibold">Informations du client</h2>
+              
+              {/* Type de client */}
+              <div className="mb-4 grid gap-2">
+                <Label htmlFor="clientType">Type de client *</Label>
+                <select
+                  id="clientType"
+                  value={clientType}
+                  onChange={(e) => {
+                    setClientType(e.target.value as "particulier" | "entreprise");
+                    // Réinitialiser le SIRET et nomSociete si on change de type
+                    if (e.target.value === "particulier") {
+                      setFormData({ ...formData, siret: "", nomSociete: "" });
+                    }
+                  }}
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                  required
+                >
+                  <option value="entreprise">Entreprise</option>
+                  <option value="particulier">Particulier</option>
+                </select>
+              </div>
+
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="grid gap-2">
                   <Label htmlFor="nom">Nom *</Label>
@@ -774,28 +804,38 @@ export default function NewProcedurePage() {
                 </div>
               </div>
               <div className="mt-4 grid gap-2">
-                <Label htmlFor="siret">SIRET *</Label>
+                <Label htmlFor="siret">
+                  SIRET {clientType === "entreprise" ? "*" : ""}
+                </Label>
                 <Input
                   id="siret"
                   value={formData.siret}
                   onChange={(e) =>
                     setFormData({ ...formData, siret: e.target.value })
                   }
-                  required
-                  placeholder="12345678901234"
+                  required={clientType === "entreprise"}
+                  placeholder={clientType === "entreprise" ? "12345678901234" : "Non requis pour un particulier"}
+                  disabled={clientType === "particulier"}
                 />
+                {clientType === "particulier" && (
+                  <p className="text-xs text-muted-foreground">
+                    Pour un particulier, un identifiant unique sera généré automatiquement
+                  </p>
+                )}
               </div>
-              <div className="mt-4 grid gap-2">
-                <Label htmlFor="nomSociete">Nom de société</Label>
-                <Input
-                  id="nomSociete"
-                  value={formData.nomSociete}
-                  onChange={(e) =>
-                    setFormData({ ...formData, nomSociete: e.target.value })
-                  }
-                  placeholder="Nom de l'entreprise"
-                />
-              </div>
+              {clientType === "entreprise" && (
+                <div className="mt-4 grid gap-2">
+                  <Label htmlFor="nomSociete">Nom de société</Label>
+                  <Input
+                    id="nomSociete"
+                    value={formData.nomSociete}
+                    onChange={(e) =>
+                      setFormData({ ...formData, nomSociete: e.target.value })
+                    }
+                    placeholder="Nom de l'entreprise"
+                  />
+                </div>
+              )}
               <div className="mt-4 grid gap-2">
                 <Label htmlFor="adresse">
                   Adresse (siège social ou adresse personnelle) <span className="text-destructive">*</span>
@@ -1099,7 +1139,7 @@ export default function NewProcedurePage() {
                           const montantTotal = parseFloat(formData.montantDue);
                           const montantParEcheance = montantTotal / nombreEcheances;
                           const dateDebut = new Date(formData.dateFactureEchue);
-                          const echeances = [];
+                          const echeances: Array<{ date: string; montant: number }> = [];
                           
                           for (let i = 0; i < nombreEcheances; i++) {
                             const dateEcheance = new Date(dateDebut);
@@ -1164,36 +1204,31 @@ export default function NewProcedurePage() {
                   const isRequired = docType.value === "FACTURE";
                   const files = filesByType[docType.value];
                   
-                  // Calculer l'index de départ global pour les numéros de facture
-                  const globalStartIndex = Object.entries(filesByType)
-                    .slice(0, DOCUMENT_TYPES.findIndex(dt => dt.value === docType.value))
-                    .reduce((sum, [, arr]) => sum + arr.length, 0);
-                  
                   return (
                     <div key={docType.value}>
                       <FileUpload
                         type={docType.value}
                         label={`${docType.label}${isRequired ? " *" : ""}`}
-                        uploadedFiles={files}
+                        uploadedFiles={files || []}
                         onFilesChange={(files) => handleFilesChange(docType.value, files)}
                       />
-                      {isRequired && files.length === 0 && (
+                      {isRequired && (!files || files.length === 0) && (
                         <p className="mt-1 text-xs text-destructive">
                           La facture est obligatoire
                         </p>
                       )}
                       
                       {/* Informations pour chaque facture */}
-                      {docType.value === "FACTURE" && files.length > 0 && (
+                      {docType.value === "FACTURE" && files && files.length > 0 && (
                         <div className="mt-4 space-y-4">
                           <Label className="text-sm font-medium">
                             Informations des factures *
                           </Label>
                           {files.map((file, index) => {
-                            const info = facturesInfo[index] || {
+                            const info: FactureInfo = facturesInfo[index] || {
                               numeroFacture: "",
-                              dateFactureEchue: "",
-                              montantDue: "",
+                              dateFactureEchue: undefined,
+                              montantDue: undefined,
                               montantTTC: true,
                             };
                             // S'assurer que toutes les valeurs sont des chaînes, jamais undefined
@@ -1360,7 +1395,10 @@ export default function NewProcedurePage() {
                       Bénéficiez de tarifs préférentiels et de l'écheancier gratuit
                     </p>
                   </div>
-                  <p className="font-bold text-xl">29 € HT</p>
+                  <div className="text-right">
+                    <p className="font-bold text-xl">34,80 € TTC</p>
+                    <p className="text-sm text-muted-foreground">/ mois</p>
+                  </div>
                 </div>
               </div>
             ) : (
@@ -1383,9 +1421,14 @@ export default function NewProcedurePage() {
                   <p className="font-medium">Mise en demeure</p>
                   <p className="text-sm text-muted-foreground">Incluse dans le dossier</p>
                 </div>
-                <p className="font-semibold">
-                  {hasFacturation ? "99 € HT" : "179 € HT"}
-                </p>
+                <div className="text-right">
+                  <p className="font-semibold">
+                    {hasFacturation ? "99 € HT" : "179 € HT"}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {hasFacturation ? "118,80 € TTC" : "214,80 € TTC"}
+                  </p>
+                </div>
               </div>
 
               {/* Écheancier - seulement si activé */}
@@ -1397,71 +1440,87 @@ export default function NewProcedurePage() {
                       {nombreEcheances} échéance{nombreEcheances > 1 ? "s" : ""}
                     </p>
                   </div>
-                  <p className="font-semibold">
-                    {hasFacturation ? (
-                      <span className="text-green-600">Gratuit</span>
-                    ) : (
-                      "49 € HT"
-                    )}
-                  </p>
+                  <div className="text-right">
+                    <p className="font-semibold">
+                      {hasFacturation ? (
+                        <span className="text-green-600">Gratuit</span>
+                      ) : (
+                        <>
+                          <span>49 € HT</span>
+                          <p className="text-xs text-muted-foreground">58,80 € TTC</p>
+                        </>
+                      )}
+                    </p>
+                  </div>
                 </div>
               )}
             </div>
 
-            <div className="border-t pt-4 space-y-2">
-              <div className="flex items-center justify-between">
-                <p className="font-semibold">Sous-total HT</p>
-                <p className="font-semibold">
-                  {(() => {
-                    let total = 0;
-                    if (hasFacturation) {
-                      total = 29 + 99; // Facturation + Mise en demeure
-                      // Écheancier gratuit avec facturation
-                    } else {
-                      total = 179; // Mise en demeure sans abonnement
-                      if (hasEcheancier) {
-                        total += 49; // Écheancier
+            <div className="border-t pt-4">
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm text-muted-foreground">Sous-total HT</p>
+                  <p className="text-sm font-medium">
+                    {(() => {
+                      let totalHT = 0;
+                      const shouldIncludeSubscription = hasFacturation && !isSubscribed;
+                      if (shouldIncludeSubscription) {
+                        // Abonnement en TTC (34,80€) = 29€ HT, Mise en demeure 99€ HT
+                        totalHT = 29 + 99;
+                      } else if (isSubscribed) {
+                        totalHT = 99;
+                      } else {
+                        totalHT = 179;
+                        if (hasEcheancier) {
+                          totalHT += 49;
+                        }
                       }
-                    }
-                    return `${total} € HT`;
-                  })()}
-                </p>
-              </div>
-              <div className="flex items-center justify-between text-sm text-muted-foreground">
-                <p>TVA (20%)</p>
-                <p>
-                  {(() => {
-                    let totalHT = 0;
-                    if (hasFacturation) {
-                      totalHT = 29 + 99;
-                    } else {
-                      totalHT = 179;
-                      if (hasEcheancier) {
-                        totalHT += 49;
+                      return `${totalHT.toFixed(2)} € HT`;
+                    })()}
+                  </p>
+                </div>
+                <div className="flex items-center justify-between">
+                  <p className="text-sm text-muted-foreground">TVA (20%)</p>
+                  <p className="text-sm font-medium">
+                    {(() => {
+                      let totalHT = 0;
+                      const shouldIncludeSubscription = hasFacturation && !isSubscribed;
+                      if (shouldIncludeSubscription) {
+                        totalHT = 29 + 99;
+                      } else if (isSubscribed) {
+                        totalHT = 99;
+                      } else {
+                        totalHT = 179;
+                        if (hasEcheancier) {
+                          totalHT += 49;
+                        }
                       }
-                    }
-                    const tva = totalHT * 0.20;
-                    return `${tva.toFixed(2)} €`;
-                  })()}
-                </p>
-              </div>
-              <div className="flex items-center justify-between pt-2 border-t">
-                <p className="text-lg font-semibold">Total TTC</p>
-                <p className="text-lg font-bold">
-                  {(() => {
-                    let totalHT = 0;
-                    if (hasFacturation) {
-                      totalHT = 29 + 99;
-                    } else {
-                      totalHT = 179;
-                      if (hasEcheancier) {
-                        totalHT += 49;
+                      const tva = totalHT * 0.20;
+                      return `${tva.toFixed(2)} €`;
+                    })()}
+                  </p>
+                </div>
+                <div className="flex items-center justify-between pt-2 border-t">
+                  <p className="text-lg font-semibold">Total TTC</p>
+                  <p className="text-lg font-bold">
+                    {(() => {
+                      let totalTTC = 0;
+                      const shouldIncludeSubscription = hasFacturation && !isSubscribed;
+                      if (shouldIncludeSubscription) {
+                        // Abonnement 34,80€ TTC + Mise en demeure 118,80€ TTC
+                        totalTTC = 34.80 + 118.80;
+                      } else if (isSubscribed) {
+                        totalTTC = 118.80; // Mise en demeure TTC
+                      } else {
+                        totalTTC = 214.80; // Mise en demeure sans abonnement TTC
+                        if (hasEcheancier) {
+                          totalTTC += 58.80; // Écheancier TTC
+                        }
                       }
-                    }
-                    const totalTTC = totalHT * 1.20;
-                    return `${totalTTC.toFixed(2)} € TTC`;
-                  })()}
-                </p>
+                      return `${totalTTC.toFixed(2)} € TTC`;
+                    })()}
+                  </p>
+                </div>
               </div>
             </div>
           </div>
@@ -1492,16 +1551,16 @@ export default function NewProcedurePage() {
           <DialogHeader>
             <DialogTitle className="text-red-600">⚠️ Vous allez payer plus cher</DialogTitle>
             <DialogDescription>
-              En refusant la facturation, vous allez payer {hasEcheancier ? "228 € HT" : "179 € HT"} au lieu de 123 € HT.
+              En refusant la facturation, vous allez payer {hasEcheancier ? "228 € HT (273,60 € TTC)" : "179 € HT (214,80 € TTC)"} au lieu de 128 € HT (153,60 € TTC).
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="rounded-lg border-2 border-red-200 bg-red-50 p-4">
               <p className="text-sm font-medium text-red-900 mb-2">
-                ⚠️ Vous perdez {hasEcheancier ? "105 €" : "56 €"} en refusant la facturation
+                ⚠️ Vous perdez {hasEcheancier ? "120 € TTC" : "61,20 € TTC"} en refusant la facturation
               </p>
               <p className="text-xs text-red-700">
-                La facturation à 29 € HT vous fait économiser {hasEcheancier ? "105 €" : "56 €"} sur cette commande et vous donne accès à l'écheancier gratuit.
+                La facturation à 34,80 € TTC vous fait économiser {hasEcheancier ? "120 € TTC" : "61,20 € TTC"} sur cette commande et vous donne accès à l'écheancier gratuit.
               </p>
             </div>
             <div className="rounded-lg border-2 border-green-200 bg-green-50 p-4">
@@ -1520,10 +1579,13 @@ export default function NewProcedurePage() {
                     </label>
                   </div>
                   <p className="text-sm text-muted-foreground ml-6">
-                    Facturation mensuelle à 29 € HT - Écheancier gratuit inclus
+                    Facturation mensuelle à 34,80 € TTC - Écheancier gratuit inclus
                   </p>
                 </div>
-                <p className="font-bold text-xl text-green-600">29 € HT</p>
+                <div className="text-right">
+                  <p className="font-bold text-xl text-green-600">34,80 € TTC</p>
+                  <p className="text-sm text-muted-foreground">/ mois</p>
+                </div>
               </div>
             </div>
           </div>
@@ -1546,6 +1608,91 @@ export default function NewProcedurePage() {
             >
               Oui, je veux économiser
             </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog pour le formulaire de paiement interne */}
+      <Dialog open={showPaymentForm} onOpenChange={setShowPaymentForm}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Paiement</DialogTitle>
+            <DialogDescription>
+              {hasFacturation && !isSubscribed 
+                ? "Abonnement avec 30 jours gratuits + Mise en demeure"
+                : "Finalisez votre paiement"}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            {hasFacturation && !isSubscribed && (
+              <div className="rounded-lg border-2 border-green-200 bg-green-50 p-4">
+                <p className="text-sm font-semibold text-green-900 mb-2">
+                  🎉 Abonnement avec 30 jours gratuits
+                </p>
+                <p className="text-xs text-green-700">
+                  Vous bénéficiez de 30 jours d'essai gratuit. Le paiement de l'abonnement commencera après cette période.
+                </p>
+              </div>
+            )}
+            <div className="space-y-2">
+              {(() => {
+                // Si l'utilisateur a coché l'abonnement OU s'il est déjà abonné, utiliser le tarif réduit
+                const shouldUseReducedPrice = hasFacturation || isSubscribed;
+                let totalHT = shouldUseReducedPrice ? 99 : 179;
+                // L'écheancier est gratuit avec l'abonnement
+                if (hasEcheancier && !shouldUseReducedPrice) {
+                  totalHT += 49;
+                }
+                const totalTTC = totalHT * 1.20;
+                
+                return (
+                  <>
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm text-muted-foreground">Mise en demeure</p>
+                      <p className="text-sm font-medium">
+                        {shouldUseReducedPrice ? "118,80 € TTC" : "214,80 € TTC"}
+                      </p>
+                    </div>
+                    {hasEcheancier && !shouldUseReducedPrice && (
+                      <div className="flex items-center justify-between">
+                        <p className="text-sm text-muted-foreground">Écheancier</p>
+                        <p className="text-sm font-medium">58,80 € TTC</p>
+                      </div>
+                    )}
+                    {hasFacturation && !isSubscribed && (
+                      <div className="flex items-center justify-between">
+                        <p className="text-sm text-muted-foreground">Abonnement (30 jours gratuits)</p>
+                        <p className="text-sm font-medium text-green-600">Gratuit</p>
+                      </div>
+                    )}
+                    <div className="flex items-center justify-between pt-2 border-t">
+                      <p className="text-lg font-semibold">Total à payer</p>
+                      <p className="text-lg font-bold">{totalTTC.toFixed(2)} € TTC</p>
+                    </div>
+                  </>
+                );
+              })()}
+            </div>
+            {paymentClientSecret && (
+              <StripePaymentForm
+                amount={(() => {
+                  // Si l'utilisateur a coché l'abonnement OU s'il est déjà abonné, utiliser le tarif réduit
+                  const shouldUseReducedPrice = hasFacturation || isSubscribed;
+                  let totalHT = shouldUseReducedPrice ? 99 : 179;
+                  // L'écheancier est gratuit avec l'abonnement
+                  if (hasEcheancier && !shouldUseReducedPrice) {
+                    totalHT += 49;
+                  }
+                  return totalHT * 1.20;
+                })()}
+                onSuccess={handlePaymentSuccess}
+                onError={handlePaymentError}
+                procedureData={prepareProcedureData()}
+                hasFacturation={hasFacturation && !isSubscribed}
+                procedureId={paymentProcedureId || undefined}
+                clientSecret={paymentClientSecret}
+              />
+            )}
           </div>
         </DialogContent>
       </Dialog>

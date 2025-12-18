@@ -3,8 +3,9 @@ import { requireAuth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { supabaseAdmin } from "@/lib/supabase";
 import { PDFDocument } from "pdf-lib";
+import { ProcedureStatus } from "@/app/generated/prisma/enums";
 
-const BUCKET_NAME = process.env.SUPABASE_BUCKET_NAME || "File";
+const BUCKET_NAME = process.env["SUPABASE_BUCKET_NAME"] || "File";
 
 export async function POST(
   request: NextRequest,
@@ -199,7 +200,7 @@ export async function POST(
     const fileName = `merged-${procedureId}-${timestamp}-${randomString}.pdf`;
     const filePath = `${user.userId}/merged/${fileName}`;
 
-    const { data: uploadData, error: uploadError } = await supabaseAdmin.storage
+    const { error: uploadError } = await supabaseAdmin.storage
       .from(BUCKET_NAME)
       .upload(filePath, Buffer.from(mergedPdfBytes), {
         contentType: "application/pdf",
@@ -228,6 +229,14 @@ export async function POST(
         filePath: urlData.publicUrl,
         fileSize: mergedPdfBytes.length,
         mimeType: "application/pdf",
+      },
+    });
+
+    // Mettre à jour le statut de la procédure à LRAR_FINI
+    await prisma.procedure.update({
+      where: { id: procedureId },
+      data: {
+        status: ProcedureStatus.LRAR_FINI,
       },
     });
 

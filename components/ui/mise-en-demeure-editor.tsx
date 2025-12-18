@@ -164,7 +164,7 @@ function jsonToHtml(data: MiseEnDemeureData): string {
   // Objet avec mention "par courrier recommandé avec accusé de réception"
   if (md.objet) {
     html += `<div class="mb-6">`;
-    html += `<p class="font-semibold mb-2">Objet : ${md.objet}</p>`;
+    html += `<p class="font-semibold mb-2">Objet ${md.objet}</p>`;
     html += `</div>`;
   }
 
@@ -261,7 +261,13 @@ export function MiseEnDemeureEditor({
 
       const data = await response.json();
       setJsonData(data);
-      setHtmlContent(jsonToHtml(data));
+      const generatedHtml = jsonToHtml(data);
+      setHtmlContent(generatedHtml);
+      
+      // Mettre à jour le contenu de l'éditeur
+      if (editorRef.current) {
+        editorRef.current.innerHTML = generatedHtml;
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Une erreur est survenue");
     } finally {
@@ -275,19 +281,46 @@ export function MiseEnDemeureEditor({
       try {
         const parsed = JSON.parse(initialContent);
         setJsonData(parsed);
+        let html = "";
         if (parsed.html_content) {
-          setHtmlContent(parsed.html_content);
+          html = parsed.html_content;
+        } else if (parsed.mise_en_demeure) {
+          html = jsonToHtml(parsed);
         } else {
-          setHtmlContent(jsonToHtml(parsed));
+          html = initialContent;
+        }
+        setHtmlContent(html);
+        
+        // Mettre à jour le contenu de l'éditeur de manière asynchrone
+        if (editorRef.current && html) {
+          // Ne mettre à jour que si le contenu est différent
+          if (editorRef.current.innerHTML !== html) {
+            editorRef.current.innerHTML = html;
+          }
         }
       } catch (e) {
+        // Si ce n'est pas du JSON, traiter comme du HTML
         setHtmlContent(initialContent);
+        if (editorRef.current && editorRef.current.innerHTML !== initialContent) {
+          editorRef.current.innerHTML = initialContent;
+        }
       }
     } else {
       handleGenerate(); // Generate if no initial content
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialContent, procedureId]);
+
+  // Synchroniser htmlContent avec le DOM seulement quand htmlContent change depuis l'extérieur
+  useEffect(() => {
+    if (editorRef.current && htmlContent) {
+      // Ne mettre à jour que si le contenu est vraiment différent
+      // et seulement si l'éditeur n'a pas le focus (pour éviter les conflits)
+      if (document.activeElement !== editorRef.current && editorRef.current.innerHTML !== htmlContent) {
+        editorRef.current.innerHTML = htmlContent;
+      }
+    }
+  }, [htmlContent]);
 
   const handleSave = async () => {
     setIsSaving(true);
@@ -312,18 +345,58 @@ export function MiseEnDemeureEditor({
   };
 
   const applyFormat = (command: string, value?: string) => {
+    if (!editorRef.current) return;
+    
+    // Sauvegarder la sélection
+    const savedRange = saveSelection();
+    
+    // Exécuter la commande
     document.execCommand(command, false, value);
-    editorRef.current?.focus();
+    
+    // Restaurer le focus et la sélection
+    editorRef.current.focus();
+    
+    // Restaurer la sélection après un court délai
+    requestAnimationFrame(() => {
+      if (savedRange) {
+        restoreSelection(savedRange);
+      }
+    });
+    
+    // Mettre à jour le contenu
+    if (editorRef.current) {
+      setHtmlContent(editorRef.current.innerHTML);
+    }
+  };
+
+  const saveSelection = (): Range | null => {
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0) return null;
+    return selection.getRangeAt(0).cloneRange();
+  };
+
+  const restoreSelection = (savedRange: Range | null) => {
+    if (!savedRange) return;
+    const selection = window.getSelection();
+    if (!selection) return;
+    try {
+      selection.removeAllRanges();
+      selection.addRange(savedRange);
+    } catch (e) {
+      // Ignorer les erreurs de restauration
+    }
   };
 
   const maintainCursorPosition = () => {
+    if (!editorRef.current) return;
+    
     const selection = window.getSelection();
     if (!selection || selection.rangeCount === 0) return;
 
     const range = selection.getRangeAt(0);
     const container = range.commonAncestorContainer;
     
-    // Trouver l'élément parent le plus proche (p, div, etc.)
+    // Trouver l'élément parent le plus proche avec un alignement
     let element: HTMLElement | null = null;
     if (container.nodeType === Node.TEXT_NODE) {
       element = container.parentElement;
@@ -331,55 +404,73 @@ export function MiseEnDemeureEditor({
       element = container as HTMLElement;
     }
 
-    if (element) {
+    // Remonter jusqu'à trouver un élément avec un style d'alignement
+    while (element && element !== editorRef.current) {
       const computedStyle = window.getComputedStyle(element);
-      const textAlign = computedStyle.textAlign;
+      const textAlign = computedStyle.textAlign || element.style.textAlign;
       
-      // Si l'élément est aligné à droite, maintenir le curseur à droite
       if (textAlign === 'right') {
-        const textNode = range.startContainer;
-        if (textNode.nodeType === Node.TEXT_NODE) {
-          const length = textNode.textContent?.length || 0;
-          range.setStart(textNode, length);
-          range.setEnd(textNode, length);
-          selection.removeAllRanges();
-          selection.addRange(range);
-        }
+        // Ne pas forcer le curseur à droite pendant la saisie
+        // Laisser l'utilisateur taper normalement
+        break;
       }
+      element = element.parentElement;
     }
   };
 
   const cleanHtml = (html: string): string => {
-    // Supprimer les artefacts comme "iice" qui peuvent apparaître
-    let cleaned = html.replace(/iice/gi, '');
-    // Nettoyer les espaces multiples
-    cleaned = cleaned.replace(/\s+/g, ' ');
-    // S'assurer que les divs avec text-align: right le conservent
-    cleaned = cleaned.replace(
-      /<div([^>]*style="[^"]*text-align:\s*right[^"]*"[^>]*)>/gi,
-      (match, attrs) => {
-        if (!attrs.includes('text-align: right')) {
-          return match.replace('style="', 'style="text-align: right; ');
-        }
-        return match;
-      }
+    if (!html) return html;
+    
+    // Créer un élément temporaire pour parser le HTML
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = html;
+    
+    // Supprimer les artefacts comme "iice" qui peuvent apparaître dans les nœuds texte
+    const walker = document.createTreeWalker(
+      tempDiv,
+      NodeFilter.SHOW_TEXT,
+      null
     );
-    return cleaned;
+    
+    const textNodes: Text[] = [];
+    let node;
+    while (node = walker.nextNode()) {
+      textNodes.push(node as Text);
+    }
+    
+    textNodes.forEach(textNode => {
+      if (textNode.textContent) {
+        // Supprimer "iice" mais préserver le reste
+        const cleaned = textNode.textContent.replace(/iice/gi, '');
+        if (cleaned !== textNode.textContent) {
+          textNode.textContent = cleaned;
+        }
+      }
+    });
+    
+    // S'assurer que les éléments avec text-align: right le conservent
+    const rightAlignedElements = tempDiv.querySelectorAll('[style*="text-align: right"], [style*="text-align:right"]');
+    rightAlignedElements.forEach((el) => {
+      const htmlEl = el as HTMLElement;
+      // S'assurer que text-align: right est bien défini dans le style
+      const style = htmlEl.getAttribute('style') || '';
+      if (!style.includes('text-align: right') && !style.includes('text-align:right')) {
+        htmlEl.style.textAlign = 'right';
+      } else if (!htmlEl.style.textAlign || htmlEl.style.textAlign !== 'right') {
+        htmlEl.style.textAlign = 'right';
+      }
+    });
+    
+    return tempDiv.innerHTML;
   };
 
   const handleInput = (e: React.FormEvent<HTMLDivElement>) => {
-    if (editorRef.current) {
-      const cleanedHtml = cleanHtml(editorRef.current.innerHTML);
-      setHtmlContent(cleanedHtml);
-      // Mettre à jour le contenu si nécessaire
-      if (editorRef.current.innerHTML !== cleanedHtml) {
-        editorRef.current.innerHTML = cleanedHtml;
-        // Restaurer la position du curseur
-        setTimeout(maintainCursorPosition, 0);
-      }
-    }
-    // Maintenir le curseur à droite si nécessaire
-    setTimeout(maintainCursorPosition, 0);
+    if (!editorRef.current) return;
+    
+    // Pendant la saisie, ne faire que mettre à jour l'état React
+    // Ne pas modifier le DOM pour éviter les problèmes de curseur
+    const currentHtml = editorRef.current.innerHTML;
+    setHtmlContent(currentHtml);
   };
 
   const handleDownloadPDF = async () => {
@@ -832,37 +923,86 @@ export function MiseEnDemeureEditor({
                   lineHeight: "1.6",
                   color: "#000",
                 }}
-                dangerouslySetInnerHTML={{ __html: htmlContent || "<p>Cliquez ici pour commencer...</p>" }}
                 onInput={handleInput}
+                onClick={(e) => {
+                  // S'assurer que le focus est bien sur l'éditeur
+                  if (editorRef.current && document.activeElement !== editorRef.current) {
+                    editorRef.current.focus();
+                  }
+                }}
+                onBlur={() => {
+                  // Nettoyer le HTML quand on quitte l'éditeur
+                  if (editorRef.current) {
+                    const currentHtml = editorRef.current.innerHTML;
+                    const cleaned = cleanHtml(currentHtml);
+                    if (currentHtml !== cleaned) {
+                      editorRef.current.innerHTML = cleaned;
+                      setHtmlContent(cleaned);
+                    } else {
+                      // Mettre à jour l'état même si pas de nettoyage
+                      setHtmlContent(currentHtml);
+                    }
+                  }
+                }}
+                onKeyDown={(e) => {
+                  // Gérer les raccourcis clavier
+                  if (e.ctrlKey || e.metaKey) {
+                    if (e.key === 'b') {
+                      e.preventDefault();
+                      applyFormat('bold');
+                    } else if (e.key === 'i') {
+                      e.preventDefault();
+                      applyFormat('italic');
+                    } else if (e.key === 'u') {
+                      e.preventDefault();
+                      applyFormat('underline');
+                    }
+                  }
+                }}
+                onPaste={(e) => {
+                  // Gérer le collage pour préserver le formatage
+                  e.preventDefault();
+                  const text = e.clipboardData.getData('text/plain');
+                  
+                  if (!editorRef.current) return;
+                  
+                  const selection = window.getSelection();
+                  if (!selection) return;
+                  
+                  let range: Range;
+                  if (selection.rangeCount === 0) {
+                    // Si pas de sélection, insérer à la fin
+                    editorRef.current.focus();
+                    range = document.createRange();
+                    range.selectNodeContents(editorRef.current);
+                    range.collapse(false);
+                    selection.removeAllRanges();
+                    selection.addRange(range);
+                  } else {
+                    range = selection.getRangeAt(0);
+                  }
+                  
+                  range.deleteContents();
+                  
+                  // Créer un nœud texte avec le contenu collé
+                  const textNode = document.createTextNode(text);
+                  range.insertNode(textNode);
+                  
+                  // Déplacer le curseur après le texte collé
+                  range.setStartAfter(textNode);
+                  range.setEndAfter(textNode);
+                  selection.removeAllRanges();
+                  selection.addRange(range);
+                  
+                  // Mettre à jour l'état
+                  setHtmlContent(editorRef.current.innerHTML);
+                }}
               />
             </div>
           </div>
         )}
       </div>
 
-      {/* Footer avec boutons */}
-      <div className="flex items-center justify-end gap-2 pt-4 border-t">
-        <Button
-          onClick={onCancel}
-          variant="outline"
-          disabled={isSaving || isGenerating}
-        >
-          Annuler
-        </Button>
-        <Button
-          onClick={handleSave}
-          disabled={isSaving || isGenerating || !htmlContent.trim()}
-        >
-          {isSaving ? (
-            <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Enregistrement...
-            </>
-          ) : (
-            "Enregistrer"
-          )}
-        </Button>
-      </div>
     </div>
   );
 }

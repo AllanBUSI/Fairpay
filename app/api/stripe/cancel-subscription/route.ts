@@ -3,7 +3,7 @@ import Stripe from "stripe";
 import { prisma } from "@/lib/prisma";
 import { verifyToken } from "@/lib/jwt";
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
+const stripe = new Stripe(process.env["STRIPE_SECRET_KEY"] || "", {
   apiVersion: "2025-11-17.clover",
 });
 
@@ -48,22 +48,30 @@ export async function POST(request: NextRequest) {
 
     // Mettre à jour la base de données
     if (user.subscription) {
+      const periodEnd = (subscription as any)?.current_period_end;
+      const currentPeriodEnd = periodEnd && typeof periodEnd === 'number' && periodEnd > 0
+        ? new Date(periodEnd * 1000)
+        : undefined; // Ne pas mettre à jour si la date n'est pas valide
+
       await prisma.subscription.update({
         where: { id: user.subscription.id },
         data: {
             cancelAtPeriodEnd: true,
-            currentPeriodEnd: new Date(
-                (subscription as any)?.current_period_end * 1000
-            ),
+            ...(currentPeriodEnd && { currentPeriodEnd }), // Mettre à jour seulement si la date est valide
             updatedAt: new Date(),
         },
       });
     }
 
+    const periodEnd = (subscription as any)?.current_period_end;
+    const currentPeriodEndDate = periodEnd && typeof periodEnd === 'number' && periodEnd > 0
+      ? new Date(periodEnd * 1000)
+      : null;
+
     return NextResponse.json({
       message: "Facturation annulée avec succès",
       cancelAtPeriodEnd: (subscription as any).cancel_at_period_end,
-      currentPeriodEnd: new Date((subscription as any).current_period_end * 1000),
+      currentPeriodEnd: currentPeriodEndDate,
     });
   } catch (error) {
     console.error("Erreur lors de l'annulation de l'abonnement:", error);

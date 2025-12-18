@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { verifyToken } from "@/lib/jwt";
 import { ProcedureStatus, DocumentType } from "@/app/generated/prisma/enums";
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
+const stripe = new Stripe(process.env["STRIPE_SECRET_KEY"] || "", {
   apiVersion: "2025-11-17.clover",
 });
 
@@ -30,10 +30,123 @@ export async function POST(request: NextRequest) {
       procedureId,
       successUrl,
       cancelUrl,
+      priceId,
+      isSubscription,
     } = body;
 
     // Récupérer hasEcheancier depuis procedureData
     const hasEcheancier = procedureData?.hasEcheancier || false;
+
+    // Si c'est un abonnement seul (sans procédure), gérer différemment
+    if (isSubscription && priceId && !procedureData) {
+      // Récupérer l'utilisateur
+      let user = await prisma.user.findUnique({
+        where: { id: payload.userId },
+      });
+
+      if (!user) {
+        return NextResponse.json({ error: "Utilisateur non trouvé" }, { status: 404 });
+      }
+
+      // Récupérer ou créer le client Stripe
+      let stripeCustomerId = user.stripeCustomerId;
+
+      if (!stripeCustomerId) {
+        const customer = await stripe.customers.create({
+          email: user.email,
+          metadata: {
+            userId: user.id,
+          },
+        });
+        stripeCustomerId = customer.id;
+
+        await prisma.user.update({
+          where: { id: user.id },
+          data: { stripeCustomerId },
+        });
+      }
+
+      // Valider le code promotionnel si fourni
+      let couponId: string | undefined;
+      if (promoCode) {
+        try {
+          // Vérifier que le coupon existe dans Stripe
+          const coupon = await stripe.coupons.retrieve(promoCode);
+          if (coupon.valid) {
+            couponId = promoCode;
+          }
+        } catch (err) {
+          // Le coupon n'existe pas ou est invalide, on continue sans
+          console.error("Code promotionnel invalide:", err);
+        }
+      }
+
+      // Récupérer le produit associé au priceId pour obtenir/mettre à jour sa description
+      try {
+        const price = await stripe.prices.retrieve(priceId);
+        if (price.product && typeof price.product === 'string') {
+          const product = await stripe.products.retrieve(price.product);
+          if (product && !product.deleted && product.description) {
+            // Le produit existe et a une description, on peut l'utiliser si nécessaire
+          }
+        }
+      } catch (err) {
+        console.error("Erreur lors de la récupération du produit:", err);
+      }
+
+      // Créer une session de checkout en mode subscription avec description détaillée
+      const sessionParams: Stripe.Checkout.SessionCreateParams = {
+        customer: stripeCustomerId,
+        payment_method_types: ["card"],
+        mode: "subscription",
+        line_items: [
+          {
+            price: priceId,
+            quantity: 1,
+          },
+        ],
+        metadata: {
+          userId: user.id,
+          hasFacturation: "true",
+          planType: "monthly",
+          benefits: "Mise en demeure à 99€ HT, Écheancier gratuit, Accès prioritaire",
+        },
+        subscription_data: {
+          description: `Abonnement mensuel FairPay - 29€ HT/mois
+
+Avantages inclus :
+• Mise en demeure à 99€ HT (au lieu de 179€ HT)
+• Écheancier de paiement gratuit
+• Accès prioritaire au réseau d'avocats
+• Suivi personnalisé par un avocat dédié
+• Conformité légale garantie`,
+          metadata: {
+            userId: user.id,
+            plan: "monthly",
+            priceHT: "29",
+            benefits: JSON.stringify([
+              "Mise en demeure à 99€ HT",
+              "Écheancier gratuit",
+              "Accès prioritaire au réseau d'avocats"
+            ]),
+          },
+        },
+        success_url: successUrl || `${process.env["NEXT_PUBLIC_APP_URL"] || "http://localhost:3000"}/dashboard/facturation?payment=success&session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: cancelUrl || `${process.env["NEXT_PUBLIC_APP_URL"] || "http://localhost:3000"}/dashboard/onboarding?payment=cancelled`,
+      };
+
+      // Ajouter le coupon si valide
+      if (couponId) {
+        sessionParams.discounts = [{ coupon: couponId }];
+      }
+
+      const session = await stripe.checkout.sessions.create(sessionParams);
+
+      return NextResponse.json({
+        sessionId: session.id,
+        url: session.url,
+      });
+    }
 
     if (!amount || amount <= 0) {
       return NextResponse.json({ error: "Montant invalide" }, { status: 400 });
@@ -55,17 +168,17 @@ export async function POST(request: NextRequest) {
       const { nom, prenom, siret, nomSociete, adresse, codePostal, ville, email, telephone, contexte, dateFactureEchue, montantDue, montantTTC, dateRelance, dateRelance2, documents, echeancier, hasEcheancier } = procedureData;
 
       // Créer ou récupérer le client
-      let client = await prisma.client.findUnique({
-        where: { siret },
-      });
-
-      if (!client) {
+      const isParticulier = siret && siret.startsWith("PARTICULIER-");
+      let client;
+      
+      if (isParticulier) {
+        // Pour les particuliers, créer toujours un nouveau client car chaque particulier a un SIRET unique
         client = await prisma.client.create({
           data: {
             nom,
             prenom,
             siret,
-            nomSociete: nomSociete || null,
+            nomSociete: null, // Les particuliers n'ont pas de nom de société
             adresse: adresse || null,
             codePostal: codePostal || null,
             ville: ville || null,
@@ -74,17 +187,38 @@ export async function POST(request: NextRequest) {
           },
         });
       } else {
-        client = await prisma.client.update({
-          where: { id: client.id },
-          data: {
-            nomSociete: nomSociete || client.nomSociete,
-            adresse: adresse || client.adresse,
-            codePostal: codePostal || client.codePostal,
-            ville: ville || client.ville,
-            email: email || client.email,
-            telephone: telephone || client.telephone,
-          },
+        // Pour les entreprises, chercher ou créer par SIRET
+        client = await prisma.client.findUnique({
+          where: { siret },
         });
+
+        if (!client) {
+          client = await prisma.client.create({
+            data: {
+              nom,
+              prenom,
+              siret,
+              nomSociete: nomSociete || null,
+              adresse: adresse || null,
+              codePostal: codePostal || null,
+              ville: ville || null,
+              email: email || null,
+              telephone: telephone || null,
+            },
+          });
+        } else {
+          client = await prisma.client.update({
+            where: { id: client.id },
+            data: {
+              nomSociete: nomSociete || client.nomSociete,
+              adresse: adresse || client.adresse,
+              codePostal: codePostal || client.codePostal,
+              ville: ville || client.ville,
+              email: email || client.email,
+              telephone: telephone || client.telephone,
+            },
+          });
+        }
       }
 
       // Créer la procédure en brouillon
@@ -231,92 +365,190 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Créer une Checkout Session avec seulement l'ID de la procédure dans les métadonnées
-    const sessionParams: Stripe.Checkout.SessionCreateParams = {
-      customer: stripeCustomerId,
-      payment_method_types: ["card"],
-      mode: "payment", // Toujours utiliser le mode payment pour pouvoir mélanger abonnement et produits
-      line_items: [],
-      metadata: {
-        userId: user.id,
-        procedureId: finalProcedureId, // Seulement l'ID, pas toutes les données
-        hasFacturation: hasFacturation ? "true" : "false",
-      },
-      success_url: successUrl ? `${successUrl}&session_id={CHECKOUT_SESSION_ID}` : `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/dashboard?payment=success&session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: cancelUrl || `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/dashboard/new?payment=cancelled`,
-    };
+    // Vérifier si l'utilisateur a déjà un abonnement actif
+    let isUserSubscribed = false;
+    if (user.stripeSubscriptionId) {
+      try {
+        const subscription = await stripe.subscriptions.retrieve(user.stripeSubscriptionId);
+        isUserSubscribed = subscription.status === "active" || subscription.status === "trialing";
+      } catch (err) {
+        console.error("Erreur lors de la vérification de l'abonnement:", err);
+      }
+    }
 
-    // Si l'utilisateur prend l'abonnement, ajouter l'abonnement comme première ligne
-    if (hasFacturation) {
-      // Calculer le montant de l'abonnement (29 € HT)
-      const subscriptionAmountHT = 29;
-      const subscriptionAmountTTC = subscriptionAmountHT * 1.20;
+    // Si l'utilisateur prend l'abonnement ET n'est pas déjà abonné, utiliser l'approche PaymentIntent + Subscription
+    // Option 2 : Paiement initial (procédure) + Abonnement séparé
+    // 1. Créer un PaymentIntent pour le paiement de la procédure
+    // 2. Créer ensuite l'abonnement récurrent après le paiement réussi
+    if (hasFacturation && !isUserSubscribed) {
+      // Récupérer le priceId de l'abonnement
+      const subscriptionPriceId = process.env["STRIPE_PRICE_ID_ABONNEMENT"];
+      
+      if (!subscriptionPriceId) {
+        return NextResponse.json(
+          { error: "Price ID d'abonnement non configuré" },
+          { status: 500 }
+        );
+      }
 
-      // Ajouter l'abonnement comme première ligne (paiement unique pour le premier mois)
-      sessionParams.line_items?.push({
-        price_data: {
-          currency: currency,
-          product_data: {
-            name: "Facturation mensuelle",
-            description: "Abonnement mensuel (premier mois)",
-          },
-          unit_amount: Math.round(subscriptionAmountTTC * 100), // Convertir en centimes
-        },
-        quantity: 1,
-      });
+      // Récupérer le prix depuis Stripe pour vérifier s'il est en HT ou TTC
+      let subscriptionPriceHT = 29; // Prix HT par défaut
+      try {
+        const price = await stripe.prices.retrieve(subscriptionPriceId);
+        // Le prix dans Stripe est en centimes, donc on divise par 100
+        subscriptionPriceHT = (price.unit_amount || 2900) / 100;
+      } catch (err) {
+        console.error("Erreur lors de la récupération du prix d'abonnement:", err);
+        // Utiliser le prix par défaut
+      }
 
-      // Calculer le montant pour la procédure (99 € HT avec abonnement)
+      // Calculer les montants en TTC
+      const subscriptionPriceTTC = subscriptionPriceHT * 1.20;
       const procedureAmountHT = 99;
       const procedureAmountTTC = procedureAmountHT * 1.20;
 
-      // Ajouter la procédure comme deuxième ligne
-      sessionParams.line_items?.push({
-        price_data: {
-          currency: currency,
-          product_data: {
-            name: "Mise en demeure",
-            description: "Création de dossier avec mise en demeure",
-          },
-          unit_amount: Math.round(procedureAmountTTC * 100), // Convertir en centimes
-        },
-        quantity: 1,
+      // Récupérer les informations de la procédure pour la description
+      const procedure = await prisma.procedure.findUnique({
+        where: { id: finalProcedureId },
+        include: { client: true },
       });
 
-      // Si écheancier, il est gratuit avec l'abonnement, donc pas besoin de l'ajouter
-    } else {
-      // Pas d'abonnement, afficher chaque produit séparément
-      // Mise en demeure : 179 € HT
-      const miseEnDemeureHT = 179;
-      const miseEnDemeureTTC = miseEnDemeureHT * 1.20;
+      const procedureDescription = procedure 
+        ? `Mise en demeure - ${procedure.client?.nomSociete || `${procedure.client?.prenom || ""} ${procedure.client?.nom || ""}`.trim() || "Procédure"}`
+        : "Mise en demeure";
 
-      sessionParams.line_items?.push({
-        price_data: {
-          currency: currency,
-          product_data: {
-            name: "Mise en demeure",
-            description: "Création de dossier avec mise en demeure",
+      // Calculer le montant total : procédure + premier mois d'abonnement
+      // Créer une session Checkout en mode "payment" pour le paiement initial
+      // Cela inclut la procédure + le premier mois d'abonnement
+      const sessionParams: Stripe.Checkout.SessionCreateParams = {
+        customer: stripeCustomerId,
+        payment_method_types: ["card"],
+        mode: "payment",
+        line_items: [
+          {
+            price_data: {
+              currency: "eur",
+              product_data: {
+                name: "Mise en demeure",
+                description: procedureDescription,
+              },
+              unit_amount: Math.round(procedureAmountTTC * 100), // Prix TTC en centimes (118,80€)
+            },
+            quantity: 1,
           },
-          unit_amount: Math.round(miseEnDemeureTTC * 100), // Convertir en centimes
+          {
+            price_data: {
+              currency: "eur",
+              product_data: {
+                name: "Abonnement mensuel FairPay (premier mois)",
+                description: "Premier mois d'abonnement - Accès aux tarifs préférentiels et écheancier gratuit",
+              },
+              unit_amount: Math.round(subscriptionPriceTTC * 100), // Prix TTC en centimes (34,80€)
+            },
+            quantity: 1,
+          },
+        ],
+        invoice_creation: {
+          enabled: true,
         },
-        quantity: 1,
-      });
+        metadata: {
+          userId: user.id,
+          procedureId: finalProcedureId,
+          hasFacturation: "true",
+          procedureAmountTTC: procedureAmountTTC.toString(),
+          subscriptionPriceTTC: subscriptionPriceTTC.toString(),
+          subscriptionPriceId: subscriptionPriceId,
+          // Indiquer qu'il faut créer l'abonnement après le paiement
+          createSubscriptionAfterPayment: "true",
+        },
+        success_url: successUrl ? `${successUrl}&session_id={CHECKOUT_SESSION_ID}` : `${process.env["NEXT_PUBLIC_APP_URL"] || "http://localhost:3000"}/dashboard?payment=success&session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: cancelUrl || `${process.env["NEXT_PUBLIC_APP_URL"] || "http://localhost:3000"}/dashboard/new?payment=cancelled`,
+      };
+      
+      const session = await stripe.checkout.sessions.create(sessionParams);
 
-      // Écheancier : 49 € HT (si activé)
-      if (hasEcheancier) {
-        const echeancierHT = 49;
-        const echeancierTTC = echeancierHT * 1.20;
+      return NextResponse.json({
+        sessionId: session.id,
+        url: session.url,
+        procedureId: finalProcedureId,
+      });
+    }
+
+    // Si pas d'abonnement ou utilisateur déjà abonné, créer une session en mode payment
+    const sessionParams: Stripe.Checkout.SessionCreateParams = {
+      customer: stripeCustomerId,
+      payment_method_types: ["card"],
+      mode: "payment",
+      line_items: [],
+      invoice_creation: {
+        enabled: true,
+      },
+      metadata: {
+        userId: user.id,
+        procedureId: finalProcedureId,
+        hasFacturation: hasFacturation ? "true" : "false",
+      },
+      success_url: successUrl ? `${successUrl}&session_id={CHECKOUT_SESSION_ID}` : `${process.env["NEXT_PUBLIC_APP_URL"] || "http://localhost:3000"}/dashboard?payment=success&session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: cancelUrl || `${process.env["NEXT_PUBLIC_APP_URL"] || "http://localhost:3000"}/dashboard/new?payment=cancelled`,
+    };
+
+    // Si l'utilisateur est déjà abonné, utiliser le prix avec abonnement
+    if (isUserSubscribed) {
+      // Pas d'abonnement dans cette commande
+      // Mais si l'utilisateur est déjà abonné, utiliser le prix avec abonnement
+      if (isUserSubscribed) {
+        // Utilisateur déjà abonné : utiliser le prix avec abonnement (99 € HT)
+        const procedureAmountHT = 99;
+        const procedureAmountTTC = procedureAmountHT * 1.20;
 
         sessionParams.line_items?.push({
           price_data: {
             currency: currency,
             product_data: {
-              name: "Écheancier de paiement",
-              description: "Écheancier de paiement personnalisé",
+              name: "Mise en demeure",
+              description: "Création de dossier avec mise en demeure",
             },
-            unit_amount: Math.round(echeancierTTC * 100), // Convertir en centimes
+            unit_amount: Math.round(procedureAmountTTC * 100), // Convertir en centimes
           },
           quantity: 1,
         });
+
+        // Écheancier gratuit avec abonnement existant
+      } else {
+        // Pas d'abonnement, afficher chaque produit séparément
+        // Mise en demeure : 179 € HT
+        const miseEnDemeureHT = 179;
+        const miseEnDemeureTTC = miseEnDemeureHT * 1.20;
+
+        sessionParams.line_items?.push({
+          price_data: {
+            currency: currency,
+            product_data: {
+              name: "Mise en demeure",
+              description: "Création de dossier avec mise en demeure",
+            },
+            unit_amount: Math.round(miseEnDemeureTTC * 100), // Convertir en centimes
+          },
+          quantity: 1,
+        });
+
+        // Écheancier : 49 € HT (si activé)
+        if (hasEcheancier) {
+          const echeancierHT = 49;
+          const echeancierTTC = echeancierHT * 1.20;
+
+          sessionParams.line_items?.push({
+            price_data: {
+              currency: currency,
+              product_data: {
+                name: "Écheancier de paiement",
+                description: "Écheancier de paiement personnalisé",
+              },
+              unit_amount: Math.round(echeancierTTC * 100), // Convertir en centimes
+            },
+            quantity: 1,
+          });
+        }
       }
     }
 
@@ -340,4 +572,5 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+
 

@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Loader2, Save, Building2, Upload, X, Image as ImageIcon } from "lucide-react";
+import { Loader2, Save, Building2, Image as ImageIcon } from "lucide-react";
 import { UserRole } from "@/app/generated/prisma/enums";
 
 interface Company {

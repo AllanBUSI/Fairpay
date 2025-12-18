@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { verifyToken } from "@/lib/jwt";
 import { PaymentStatus } from "@/app/generated/prisma/enums";
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
+const stripe = new Stripe(process.env["STRIPE_SECRET_KEY"] || "", {
   apiVersion: "2025-11-17.clover",
 });
 
@@ -57,7 +57,10 @@ export async function POST(request: NextRequest) {
 
     const existingPaymentIds = new Set(
       existingInvoices.data
-        .map((inv) => inv.metadata?.paymentId)
+        .map((inv) => {
+          const invMetadata = inv.metadata as Record<string, string> | undefined;
+          return invMetadata?.["paymentId"];
+        })
         .filter((id): id is string => !!id)
     );
 
@@ -77,15 +80,13 @@ export async function POST(request: NextRequest) {
       }
 
       try {
-        // Récupérer le PaymentIntent
-        const paymentIntent = await stripe.paymentIntents.retrieve(payment.stripePaymentIntentId);
-        
         // Récupérer la session de checkout si elle existe
-        let session = null;
+        let session: Stripe.Checkout.Session | null = null;
         try {
           // Chercher la session via les métadonnées du PaymentIntent
-          if (payment.metadata && typeof payment.metadata === 'object' && 'sessionId' in payment.metadata) {
-            session = await stripe.checkout.sessions.retrieve(payment.metadata.sessionId as string);
+          const paymentMetadata = payment.metadata as Record<string, string> | undefined;
+          if (paymentMetadata && typeof paymentMetadata === 'object' && 'sessionId' in paymentMetadata) {
+            session = await stripe.checkout.sessions.retrieve(paymentMetadata["sessionId"]);
           }
         } catch (e) {
           // Pas de session trouvée, continuer sans

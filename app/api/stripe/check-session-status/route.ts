@@ -2,9 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { prisma } from "@/lib/prisma";
 import { verifyToken } from "@/lib/jwt";
-import { ProcedureStatus, PaymentStatus } from "@/app/generated/prisma/enums";
+import { ProcedureStatus, PaymentStatus, SubscriptionStatus } from "@/app/generated/prisma/enums";
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
+const stripe = new Stripe(process.env["STRIPE_SECRET_KEY"] || "", {
   apiVersion: "2025-11-17.clover",
 });
 
@@ -29,10 +29,28 @@ export async function POST(request: NextRequest) {
 
     // Récupérer la session depuis Stripe
     const session = await stripe.checkout.sessions.retrieve(sessionId);
+    const sessionMetadata = session.metadata as Record<string, string> | undefined;
+
+    // Si c'est une session en mode subscription (abonnement), gérer différemment
+    if (session.mode === "subscription" && session.subscription) {
+      return handleSubscriptionCheckout(session, payload);
+    }
+
+    // Vérifier si le paiement est en statut "open" (non payé)
+    // Note: payment_status de Stripe est une chaîne, pas l'enum PaymentStatus de Prisma
+    const paymentStatus = session.payment_status as string;
+    if (paymentStatus === "open" || paymentStatus === "unpaid") {
+      return NextResponse.json({
+        success: false,
+        paymentStatus: session.payment_status,
+        error: "Le paiement est en attente et n'a pas été complété. Veuillez compléter le paiement.",
+        paid: false,
+      }, { status: 400 });
+    }
 
     // Vérifier que le paiement est bien autorisé (paid) avant de mettre à jour
-    if (session.payment_status === "paid" && session.metadata?.procedureId) {
-      const procedureId = session.metadata.procedureId;
+    if (session.payment_status === "paid" && sessionMetadata?.["procedureId"]) {
+      const procedureId = sessionMetadata["procedureId"];
 
       // Vérifier si la procédure a déjà été mise à jour
       const procedure = await prisma.procedure.findUnique({
@@ -46,13 +64,21 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: "Procédure non trouvée" }, { status: 404 });
       }
       
+      // Si c'est une injonction, rediriger vers la route dédiée
+      if (sessionMetadata?.["isInjonction"] === "true" || procedure.status === ProcedureStatus.INJONCTION_DE_PAIEMENT) {
+        return NextResponse.json({
+          error: "Les injonctions de paiement doivent utiliser la route /api/stripe/verify-injonction-payment",
+          isInjonction: true,
+        }, { status: 400 });
+      }
+      
       // Mettre à jour si la procédure est en BROUILLONS, n'a pas de paymentId, ou si le paymentStatus n'est pas SUCCEEDED
       const needsUpdate = procedure.status === ProcedureStatus.BROUILLONS || 
                          !procedure.paymentId || 
                          procedure.paymentStatus !== PaymentStatus.SUCCEEDED;
       
       if (needsUpdate) {
-        console.log(`Procédure ${procedureId} nécessite une mise à jour (statut: ${procedure.status}, paymentId: ${procedure.paymentId}), mise à jour en NOUVEAU...`);
+        console.log(`Procédure ${procedureId} nécessite une mise à jour (statut actuel: ${procedure.status}), mise à jour en NOUVEAU...`);
         
         // Vérifier si un paiement existe déjà
         let payment = await prisma.payment.findFirst({
@@ -64,7 +90,7 @@ export async function POST(request: NextRequest) {
         if (!payment) {
           console.log(`Création d'un nouveau paiement pour la session ${session.id}`);
           // Récupérer les détails du PaymentIntent pour avoir plus d'informations
-          let chargeId = null;
+          let chargeId: string | null = null;
           if (session.payment_intent) {
             try {
               const paymentIntent = await stripe.paymentIntents.retrieve(session.payment_intent as string);
@@ -105,7 +131,6 @@ export async function POST(request: NextRequest) {
         }
 
         // Mettre à jour la procédure : passer de BROUILLONS à NOUVEAU
-        // FORCER la mise à jour même si elle n'est pas exactement en BROUILLONS
         try {
           const updatedProcedure = await prisma.procedure.update({
             where: { id: procedure.id },
@@ -145,6 +170,120 @@ export async function POST(request: NextRequest) {
           throw updateError;
         }
 
+        // Si hasFacturation est true, créer l'abonnement Stripe
+        // Option 2 : Paiement initial + Abonnement séparé
+        // Si createSubscriptionAfterPayment est true, créer l'abonnement après le paiement réussi
+        if (sessionMetadata?.["hasFacturation"] === "true" || sessionMetadata?.["createSubscriptionAfterPayment"] === "true") {
+          try {
+            const user = await prisma.user.findUnique({
+              where: { id: payload.userId },
+            });
+
+            if (user && user.stripeCustomerId && !user.stripeSubscriptionId) {
+              console.log(`📦 Création de l'abonnement pour l'utilisateur ${user.id}...`);
+              
+              // Récupérer le priceId de l'abonnement depuis les métadonnées ou les variables d'environnement
+              const subscriptionPriceId = sessionMetadata?.["subscriptionPriceId"] || process.env["STRIPE_PRICE_ID_ABONNEMENT"];
+              
+              if (!subscriptionPriceId) {
+                console.error("❌ STRIPE_PRICE_ID_ABONNEMENT non configuré");
+              } else {
+                // Récupérer le PaymentIntent pour obtenir le payment_method
+                let paymentMethodId: string | null = null;
+                if (session.payment_intent) {
+                  try {
+                    const paymentIntent = await stripe.paymentIntents.retrieve(session.payment_intent as string);
+                    if (paymentIntent.payment_method) {
+                      if (typeof paymentIntent.payment_method === 'string') {
+                        paymentMethodId = paymentIntent.payment_method;
+                      } else {
+                        paymentMethodId = (paymentIntent.payment_method as any).id;
+                      }
+                    }
+                  } catch (err) {
+                    console.error("Erreur lors de la récupération du PaymentIntent:", err);
+                  }
+                }
+
+                // Créer l'abonnement Stripe
+                const subscriptionParams: Stripe.SubscriptionCreateParams = {
+                  customer: user.stripeCustomerId,
+                  items: [{ price: subscriptionPriceId }],
+                  metadata: {
+                    userId: user.id,
+                    createdFromCheckout: "true",
+                    checkoutSessionId: session.id,
+                    procedureId: procedureId || "",
+                  },
+                };
+
+                // Si on a un payment_method, l'attacher au customer et l'utiliser comme default
+                if (paymentMethodId) {
+                  try {
+                    await stripe.paymentMethods.attach(paymentMethodId, {
+                      customer: user.stripeCustomerId,
+                    });
+                    await stripe.customers.update(user.stripeCustomerId, {
+                      invoice_settings: {
+                        default_payment_method: paymentMethodId,
+                      },
+                    });
+                    console.log(`✅ Payment method ${paymentMethodId} attaché au customer`);
+                  } catch (pmError) {
+                    console.error("Erreur lors de l'attachement du payment method:", pmError);
+                  }
+                }
+
+                const subscription = await stripe.subscriptions.create(subscriptionParams);
+
+                // Mettre à jour l'utilisateur avec le stripeSubscriptionId
+                await prisma.user.update({
+                  where: { id: user.id },
+                  data: {
+                    stripeSubscriptionId: subscription.id,
+                  },
+                });
+
+                // Créer l'entrée dans la table Subscription
+                const statusMap: Record<string, SubscriptionStatus> = {
+                  active: SubscriptionStatus.ACTIVE,
+                  trialing: SubscriptionStatus.TRIALING,
+                  past_due: SubscriptionStatus.PAST_DUE,
+                  canceled: SubscriptionStatus.CANCELED,
+                  unpaid: SubscriptionStatus.UNPAID,
+                };
+
+                const subscriptionData = subscription as any;
+                await prisma.subscription.upsert({
+                  where: { stripeSubscriptionId: subscription.id },
+                  create: {
+                    userId: user.id,
+                    stripeSubscriptionId: subscription.id,
+                    stripePriceId: subscriptionPriceId,
+                    status: statusMap[subscription.status] || SubscriptionStatus.TRIALING,
+                    currentPeriodStart: new Date((subscriptionData.current_period_start || Date.now() / 1000) * 1000),
+                    currentPeriodEnd: new Date((subscriptionData.current_period_end || (Date.now() / 1000 + 30 * 24 * 60 * 60)) * 1000),
+                    cancelAtPeriodEnd: subscriptionData.cancel_at_period_end || false,
+                  },
+                  update: {
+                    status: statusMap[subscription.status] || SubscriptionStatus.TRIALING,
+                    currentPeriodStart: new Date((subscriptionData.current_period_start || Date.now() / 1000) * 1000),
+                    currentPeriodEnd: new Date((subscriptionData.current_period_end || (Date.now() / 1000 + 30 * 24 * 60 * 60)) * 1000),
+                    cancelAtPeriodEnd: subscriptionData.cancel_at_period_end || false,
+                  },
+                });
+
+                console.log(`✅ Abonnement créé: ${subscription.id} pour l'utilisateur ${user.id}`);
+              }
+            } else if (user && user.stripeSubscriptionId) {
+              console.log(`ℹ️ L'utilisateur ${user.id} a déjà un abonnement: ${user.stripeSubscriptionId}`);
+            }
+          } catch (subscriptionError) {
+            console.error("Erreur lors de la création de l'abonnement:", subscriptionError);
+            // Ne pas faire échouer le traitement si l'abonnement échoue
+          }
+        }
+
         return NextResponse.json({
           success: true,
           procedureId: procedure.id,
@@ -174,7 +313,7 @@ export async function POST(request: NextRequest) {
 
           if (!payment) {
             // Créer le paiement
-            let chargeId = null;
+            let chargeId: string | null = null;
             if (session.payment_intent) {
               try {
                 const paymentIntent = await stripe.paymentIntents.retrieve(session.payment_intent as string);
@@ -202,8 +341,8 @@ export async function POST(request: NextRequest) {
             });
           }
 
-          // Forcer la mise à jour
-          let updatedProcedure = await prisma.procedure.update({
+          // Forcer la mise à jour en NOUVEAU
+          await prisma.procedure.update({
             where: { id: procedure.id },
             data: {
               status: ProcedureStatus.NOUVEAU,
@@ -213,87 +352,51 @@ export async function POST(request: NextRequest) {
             },
           });
 
-          // Créer une facture Stripe pour ce paiement si elle n'existe pas déjà
+          // Récupérer la facture créée automatiquement par Checkout (si invoice_creation est activé)
           try {
             const user = await prisma.user.findUnique({
               where: { id: payload.userId },
             });
 
-            if (user && user.stripeCustomerId && session.payment_intent) {
-              // Vérifier si une facture existe déjà pour ce paiement
+            if (user && user.stripeCustomerId && session.invoice) {
+              // Checkout a créé une facture automatiquement, la récupérer et mettre à jour ses métadonnées
+              const invoice = await stripe.invoices.retrieve(session.invoice as string);
+              
+              // Mettre à jour les métadonnées de la facture pour lier au paiement
+              await stripe.invoices.update(invoice.id, {
+                metadata: {
+                  ...invoice.metadata,
+                  procedureId: procedure.id,
+                  paymentId: payment.id,
+                  sessionId: session.id,
+                },
+              });
+
+              console.log(`✅ Facture Stripe récupérée depuis Checkout: ${invoice.id} (statut: ${invoice.status})`);
+            } else if (user && user.stripeCustomerId && session.payment_intent) {
+              // Si pas d'invoice créée par Checkout, chercher si une facture existe déjà pour ce PaymentIntent
               const existingInvoices = await stripe.invoices.list({
                 customer: user.stripeCustomerId,
                 limit: 100,
               });
 
-              const invoiceExists = existingInvoices.data.some(
-                (inv) => inv.metadata?.paymentId === payment.id || inv.metadata?.sessionId === session.id
+              const invoiceExists = existingInvoices.data.find(
+                (inv) => {
+                  const invMetadata = inv.metadata as Record<string, string> | undefined;
+                  return (inv as any).payment_intent === session.payment_intent || 
+                         invMetadata?.["paymentId"] === payment.id || 
+                         invMetadata?.["sessionId"] === session.id;
+                }
               );
 
               if (!invoiceExists) {
-                // Récupérer le PaymentIntent pour obtenir les détails
-                const paymentIntent = await stripe.paymentIntents.retrieve(session.payment_intent as string);
-                
-                // Créer une facture Stripe pour ce paiement
-                const invoice = await stripe.invoices.create({
-                  customer: user.stripeCustomerId,
-                  collection_method: "charge_automatically",
-                  auto_advance: false,
-                  description: `Facture pour ${procedure.contexte || "Procédure"}`,
-                  metadata: {
-                    procedureId: procedure.id,
-                    paymentId: payment.id,
-                    sessionId: session.id,
-                  },
-                });
-
-                // Ajouter les lignes de la facture basées sur les line_items de la session
-                try {
-                  const lineItems = await stripe.checkout.sessions.listLineItems(session.id, {
-                    expand: ["data.price.product"],
-                  });
-
-                  if (lineItems.data && lineItems.data.length > 0) {
-                    for (const item of lineItems.data) {
-                      await stripe.invoiceItems.create({
-                        customer: user.stripeCustomerId,
-                        invoice: invoice.id,
-                        amount: item.amount_total || 0,
-                        currency: item.currency || "eur",
-                        description: item.description || "Article",
-                      });
-                    }
-                  } else {
-                    // Si pas de line_items, créer une ligne simple
-                    await stripe.invoiceItems.create({
-                      customer: user.stripeCustomerId,
-                      invoice: invoice.id,
-                      amount: session.amount_total || 0,
-                      currency: session.currency || "eur",
-                      description: `Paiement de dossier - ${procedure.contexte || "Procédure"}`,
-                    });
-                  }
-                } catch (lineItemsError) {
-                  console.error("Erreur lors de la récupération des line_items:", lineItemsError);
-                  // Créer une ligne simple en cas d'erreur
-                  await stripe.invoiceItems.create({
-                    customer: user.stripeCustomerId,
-                    invoice: invoice.id,
-                    amount: session.amount_total || 0,
-                    currency: session.currency || "eur",
-                    description: `Paiement de dossier - ${procedure.contexte || "Procédure"}`,
-                  });
-                }
-
-                // Finaliser et payer la facture
-                const finalizedInvoice = await stripe.invoices.finalizeInvoice(invoice.id);
-                await stripe.invoices.pay(finalizedInvoice.id);
-
-                console.log(`✅ Facture Stripe créée via check-session-status: ${finalizedInvoice.id}`);
+                console.log(`ℹ️ Aucune facture trouvée pour ce paiement. Checkout devrait créer la facture automatiquement si invoice_creation est activé.`);
+              } else {
+                console.log(`✅ Facture existante trouvée: ${invoiceExists.id} (statut: ${invoiceExists.status})`);
               }
             }
           } catch (invoiceError) {
-            console.error("Erreur lors de la création de la facture Stripe:", invoiceError);
+            console.error("Erreur lors de la récupération de la facture Stripe:", invoiceError);
             // Ne pas faire échouer le traitement si la facture échoue
           }
 
@@ -306,9 +409,9 @@ export async function POST(request: NextRequest) {
           });
         }
       }
-    } else if (session.metadata?.procedureId) {
+    } else if (sessionMetadata?.["procedureId"]) {
       // Paiement non autorisé : s'assurer que la procédure reste en BROUILLONS
-      const procedureId = session.metadata.procedureId;
+      const procedureId = sessionMetadata["procedureId"];
       const procedure = await prisma.procedure.findUnique({
         where: { id: procedureId },
       });
@@ -324,19 +427,208 @@ export async function POST(request: NextRequest) {
         });
       }
 
+      // Si le statut est "open" ou "unpaid", renvoyer une erreur spécifique
+      const paymentStatus = session.payment_status as string;
+      if (paymentStatus === "open" || paymentStatus === "unpaid") {
+        return NextResponse.json({
+          success: false,
+          paymentStatus: session.payment_status,
+          error: "Le paiement est en attente et n'a pas été complété. Veuillez compléter le paiement.",
+          paid: false,
+        }, { status: 400 });
+      }
+
       return NextResponse.json({
         success: false,
         paymentStatus: session.payment_status,
+        error: `Le paiement n'a pas été complété. Statut: ${session.payment_status}`,
         message: "Paiement non autorisé, procédure reste en BROUILLONS",
-      });
+        paid: false,
+      }, { status: 400 });
     }
 
     return NextResponse.json({
       success: false,
       paymentStatus: session.payment_status,
-    });
+      error: `Le paiement n'a pas été complété. Statut: ${session.payment_status}`,
+      paid: false,
+    }, { status: 400 });
   } catch (error) {
     console.error("Erreur lors de la vérification du statut de la session:", error);
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Erreur serveur" },
+      { status: 500 }
+    );
+  }
+}
+
+// Fonction pour gérer les sessions d'abonnement
+async function handleSubscriptionCheckout(
+  session: Stripe.Checkout.Session,
+  payload: { userId: string }
+) {
+  try {
+    console.log(`📦 Traitement d'une session d'abonnement: ${session.id}`);
+
+    // Récupérer la subscription depuis Stripe
+    const subscriptionId = typeof session.subscription === 'string' 
+      ? session.subscription 
+      : session.subscription?.id;
+    
+    if (!subscriptionId) {
+      return NextResponse.json(
+        { error: "Abonnement non trouvé dans la session" },
+        { status: 400 }
+      );
+    }
+
+    const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+    const user = await prisma.user.findUnique({
+      where: { id: payload.userId },
+    });
+
+    if (!user || !user.stripeCustomerId) {
+      return NextResponse.json(
+        { error: "Utilisateur non trouvé" },
+        { status: 404 }
+      );
+    }
+
+    // Mettre à jour l'utilisateur avec le stripeSubscriptionId
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        stripeSubscriptionId: subscription.id,
+      },
+    });
+
+    // Créer/mettre à jour l'entrée dans la table Subscription
+    const subscriptionData = subscription as any;
+    const statusMap: Record<string, SubscriptionStatus> = {
+      active: SubscriptionStatus.ACTIVE,
+      trialing: SubscriptionStatus.TRIALING,
+      past_due: SubscriptionStatus.PAST_DUE,
+      canceled: SubscriptionStatus.CANCELED,
+      unpaid: SubscriptionStatus.UNPAID,
+    };
+
+    await prisma.subscription.upsert({
+      where: { stripeSubscriptionId: subscription.id },
+      create: {
+        userId: user.id,
+        stripeSubscriptionId: subscription.id,
+        stripePriceId: subscription.items.data[0]?.price.id || "",
+        status: statusMap[subscription.status] || SubscriptionStatus.TRIALING,
+        currentPeriodStart: new Date((subscriptionData.current_period_start || Date.now() / 1000) * 1000),
+        currentPeriodEnd: new Date((subscriptionData.current_period_end || (Date.now() / 1000 + 30 * 24 * 60 * 60)) * 1000),
+        cancelAtPeriodEnd: subscriptionData.cancel_at_period_end || false,
+      },
+      update: {
+        status: statusMap[subscription.status] || SubscriptionStatus.TRIALING,
+        currentPeriodStart: new Date((subscriptionData.current_period_start || Date.now() / 1000) * 1000),
+        currentPeriodEnd: new Date((subscriptionData.current_period_end || (Date.now() / 1000 + 30 * 24 * 60 * 60)) * 1000),
+        cancelAtPeriodEnd: subscriptionData.cancel_at_period_end || false,
+      },
+    });
+
+    console.log(`✅ Abonnement créé/mis à jour: ${subscription.id}`);
+
+    // Si la session contient un procedureId dans les métadonnées, ajouter la procédure comme invoice item
+    const procedureId = session?.metadata?.["procedureId"];
+    if (procedureId) {
+      try {
+        const procedure = await prisma.procedure.findUnique({
+          where: { id: procedureId },
+        });
+
+        if (procedure && procedure.status === ProcedureStatus.BROUILLONS) {
+          // Calculer le montant de la procédure (99 € HT avec abonnement)
+          const procedureAmountHT = 99;
+          const procedureAmountTTC = procedureAmountHT * 1.20;
+
+          // Récupérer la première facture de l'abonnement
+          const invoices = await stripe.invoices.list({
+            subscription: subscription.id,
+            limit: 1,
+          });
+
+          // Correction: Ensure invoice is never assigned undefined (Type 'Invoice | undefined' is not assignable to type 'Invoice | null').
+          let invoice: Stripe.Invoice | null = null;
+          if (invoices.data.length > 0 && invoices.data[0]) {
+            invoice = invoices.data[0] as Stripe.Invoice;
+          } else {
+            // Créer une facture pour l'abonnement si elle n'existe pas encore
+            invoice = await stripe.invoices.create({
+              customer: user.stripeCustomerId,
+              subscription: subscription.id,
+              auto_advance: false, // Ne pas finaliser automatiquement
+            });
+          }
+
+          // Ajouter la procédure comme invoice item
+          await stripe.invoiceItems.create({
+            customer: user.stripeCustomerId,
+            invoice: invoice?.id ?? undefined,
+            amount: Math.round(procedureAmountTTC * 100), // En centimes
+            currency: "eur",
+            description: `Mise en demeure - ${procedure.contexte || "Procédure"}`,
+            metadata: {
+              procedureId: procedureId,
+              userId: user.id,
+            },
+          });
+
+          // Finaliser et payer la facture si elle n'est pas encore finalisée
+          if (invoice && invoice.status === "draft") {
+            invoice = await stripe.invoices.finalizeInvoice(invoice.id);
+          }
+
+          // Créer un paiement pour la procédure
+          const invoiceData = invoice as any;
+          let payment = await prisma.payment.create({
+            data: {
+              userId: user.id,
+              procedureId: procedureId,
+              stripePaymentIntentId: invoiceData.payment_intent || "",
+              amount: procedureAmountTTC,
+              currency: "eur",
+              status: PaymentStatus.SUCCEEDED,
+              description: `Mise en demeure - ${procedure.contexte || "Procédure"}`,
+              metadata: {
+                sessionId: session.id,
+                subscriptionId: subscription.id,
+                invoiceId: invoiceData.id,
+                hasFacturation: "true",
+              } as any,
+            },
+          });
+
+          // Mettre à jour la procédure
+          await prisma.procedure.update({
+            where: { id: procedureId },
+            data: {
+              status: ProcedureStatus.NOUVEAU,
+              paymentId: payment.id,
+              paymentStatus: PaymentStatus.SUCCEEDED,
+              updatedAt: new Date(),
+            },
+          });
+
+          console.log(`✅ Procédure ${procedureId} ajoutée à la facture d'abonnement et mise à jour`);
+        }
+      } catch (procedureError) {
+        console.error("Erreur lors de l'ajout de la procédure à la facture:", procedureError);
+        // Ne pas faire échouer le traitement de l'abonnement si l'ajout de la procédure échoue
+      }
+    }
+
+    return NextResponse.json({
+      success: true,
+      subscriptionId: subscription.id,
+      procedureId: procedureId || null,
+    });
+  } catch (error) {
+    console.error("Erreur lors du traitement de l'abonnement:", error);
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Erreur serveur" },
       { status: 500 }

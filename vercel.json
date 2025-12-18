@@ -1,0 +1,9 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/check-lrar-followup",
+      "schedule": "0 9 * * *"
+    }
+  ]
+}
+

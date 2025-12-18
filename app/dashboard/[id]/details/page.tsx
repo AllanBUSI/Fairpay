@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { FileText, CheckCircle2, X, Loader2, Eye, ChevronUp, ChevronDown } from "lucide-react";
+import { FileText, X, Loader2, Eye, ChevronUp, ChevronDown } from "lucide-react";
 import { UserRole } from "@/app/generated/prisma/enums";
 import { DocumentViewer } from "@/components/ui/document-viewer";
 
@@ -40,14 +40,14 @@ interface Procedure {
 export default function ProcedureDetailsPage() {
   const router = useRouter();
   const params = useParams();
-  const procedureId = params.id as string;
+  const procedureId = params["id"] as string;
   const [procedure, setProcedure] = useState<Procedure | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [selectedDocuments, setSelectedDocuments] = useState<Set<string>>(new Set());
   const [selectedDocumentsOrder, setSelectedDocumentsOrder] = useState<string[]>([]); // Ordre de fusion
   const [merging, setMerging] = useState(false);
-  const [user, setUser] = useState<{ id: string; role: UserRole } | null>(null);
+  const [, setUser] = useState<{ id: string; role: UserRole } | null>(null);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -150,11 +150,15 @@ export default function ProcedureDetailsPage() {
     const currentIndex = selectedDocumentsOrder.indexOf(documentId);
     if (currentIndex > 0) {
       const newOrder = [...selectedDocumentsOrder];
-      [newOrder[currentIndex - 1], newOrder[currentIndex]] = [
-        newOrder[currentIndex],
-        newOrder[currentIndex - 1],
-      ];
-      setSelectedDocumentsOrder(newOrder);
+      const prevItem = newOrder[currentIndex - 1];
+      const currentItem = newOrder[currentIndex];
+      if (prevItem !== undefined && currentItem !== undefined) {
+        [newOrder[currentIndex - 1], newOrder[currentIndex]] = [
+          currentItem,
+          prevItem,
+        ];
+        setSelectedDocumentsOrder(newOrder);
+      }
     }
   };
 
@@ -162,11 +166,15 @@ export default function ProcedureDetailsPage() {
     const currentIndex = selectedDocumentsOrder.indexOf(documentId);
     if (currentIndex < selectedDocumentsOrder.length - 1 && currentIndex !== -1) {
       const newOrder = [...selectedDocumentsOrder];
-      [newOrder[currentIndex], newOrder[currentIndex + 1]] = [
-        newOrder[currentIndex + 1],
-        newOrder[currentIndex],
-      ];
-      setSelectedDocumentsOrder(newOrder);
+      const currentItem = newOrder[currentIndex];
+      const nextItem = newOrder[currentIndex + 1];
+      if (currentItem !== undefined && nextItem !== undefined) {
+        [newOrder[currentIndex], newOrder[currentIndex + 1]] = [
+          nextItem,
+          currentItem,
+        ];
+        setSelectedDocumentsOrder(newOrder);
+      }
     }
   };
 

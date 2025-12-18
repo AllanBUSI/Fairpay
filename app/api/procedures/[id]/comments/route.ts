@@ -131,6 +131,34 @@ export async function POST(
       );
     }
 
+    // Récupérer les informations complètes de la procédure pour l'email
+    const procedureWithUsers = await prisma.procedure.findUnique({
+      where: { id: procedureId },
+      include: {
+        user: {
+          select: {
+            id: true,
+            email: true,
+            role: true,
+          },
+        },
+        avocat: {
+          select: {
+            id: true,
+            email: true,
+            role: true,
+          },
+        },
+      },
+    });
+
+    if (!procedureWithUsers) {
+      return NextResponse.json(
+        { error: "Procédure non trouvée" },
+        { status: 404 }
+      );
+    }
+
     // Créer le commentaire
     const comment = await prisma.comment.create({
       data: {
@@ -156,6 +184,59 @@ export async function POST(
         status: ProcedureStatus.EN_ATTENTE_RETOUR,
       },
     });
+
+    // Envoyer un email de notification
+    try {
+      let recipientEmail: string | null = null;
+
+      if (user.role === UserRole.AVOCAT) {
+        // Si l'avocat envoie un message, notifier l'utilisateur
+        recipientEmail = procedureWithUsers.user.email;
+      } else if (user.role === UserRole.USER && procedureWithUsers.avocat) {
+        // Si l'utilisateur répond, notifier l'avocat
+        recipientEmail = procedureWithUsers.avocat.email;
+      }
+
+      if (recipientEmail) {
+        const emailSubject = user.role === UserRole.AVOCAT
+          ? "Nouveau message de votre avocat - FairPay"
+          : "Réponse de l'utilisateur - FairPay";
+
+        const emailHtml = `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h2 style="color: #0F172A;">${emailSubject}</h2>
+            <p>Bonjour,</p>
+            <p>${user.role === UserRole.AVOCAT ? "Votre avocat" : "L'utilisateur"} a envoyé un nouveau message concernant votre dossier.</p>
+            <div style="background-color: #f3f4f6; padding: 15px; border-radius: 5px; margin: 20px 0;">
+              <p style="margin: 0;"><strong>Message :</strong></p>
+              <p style="margin: 10px 0 0 0; white-space: pre-wrap;">${content.trim()}</p>
+            </div>
+            <p>Vous pouvez consulter et répondre à ce message directement depuis votre espace FairPay.</p>
+            <p style="margin-top: 30px; color: #6b7280; font-size: 12px;">
+              Cet email a été envoyé automatiquement par FairPay.
+            </p>
+          </div>
+        `;
+
+        // Appeler l'API d'envoi d'email de manière asynchrone (ne pas bloquer la réponse)
+        fetch(`${process.env["NEXT_PUBLIC_APP_URL"] || "http://localhost:3000"}/api/send-email`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            to: recipientEmail,
+            subject: emailSubject,
+            html: emailHtml,
+          }),
+        }).catch((err) => {
+          console.error("Erreur lors de l'envoi de l'email de notification:", err);
+        });
+      }
+    } catch (emailError) {
+      // Ne pas faire échouer la création du commentaire si l'email échoue
+      console.error("Erreur lors de l'envoi de l'email:", emailError);
+    }
 
     return NextResponse.json({ comment }, { status: 201 });
   } catch (error) {

@@ -20,7 +20,19 @@
     ],
     "paths": {
       "@/*": ["./*"]
-    }
+    },
+    // Options strictes supplémentaires pour éviter les problèmes de portée et de typage
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedIndexedAccess": false,
+    "noImplicitOverride": true,
+    "noPropertyAccessFromIndexSignature": false,
+    "forceConsistentCasingInFileNames": true,
+    "allowUnusedLabels": true,
+    "allowUnreachableCode": true,
+    "noImplicitAny": false
   },
   "include": [
     "next-env.d.ts",

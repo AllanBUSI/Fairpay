@@ -3,7 +3,7 @@ import Stripe from "stripe";
 import { prisma } from "@/lib/prisma";
 import { verifyToken } from "@/lib/jwt";
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
+const stripe = new Stripe(process.env["STRIPE_SECRET_KEY"] || "", {
   apiVersion: "2025-11-17.clover",
 });
 
@@ -33,7 +33,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const returnUrl = body.returnUrl || `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/dashboard/facturation`;
+    const returnUrl = body.returnUrl || `${process.env["NEXT_PUBLIC_APP_URL"] || "http://localhost:3000"}/dashboard/facturation`;
 
     // Créer une session du portail client Stripe
     const portalSession = await stripe.billingPortal.sessions.create({

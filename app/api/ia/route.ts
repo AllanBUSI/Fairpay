@@ -4,9 +4,6 @@ import { requireAuth } from "@/lib/auth";
 
 // Fonction pour convertir un montant en lettres (simplifié)
 function convertirMontantEnLettres(montant: number): string {
-  const unite = ["", "un", "deux", "trois", "quatre", "cinq", "six", "sept", "huit", "neuf"];
-  const dizaine = ["", "", "vingt", "trente", "quarante", "cinquante", "soixante", "soixante", "quatre-vingt", "quatre-vingt"];
-  const special = ["dix", "onze", "douze", "treize", "quatorze", "quinze", "seize", "dix-sept", "dix-huit", "dix-neuf"];
   
   if (montant === 0) return "zéro";
   if (montant >= 1000) {
@@ -23,8 +20,8 @@ function convertirNombreEnLettres(n: number): string {
   const special = ["dix", "onze", "douze", "treize", "quatorze", "quinze", "seize", "dix-sept", "dix-huit", "dix-neuf"];
   
   if (n === 0) return "";
-  if (n < 10) return unite[n];
-  if (n < 20) return special[n - 10];
+  if (n < 10) return unite[n] || "";
+  if (n < 20) return special[n - 10] || "";
   if (n < 100) {
     const d = Math.floor(n / 10);
     const u = n % 10;
@@ -126,7 +123,15 @@ export async function POST(request: NextRequest) {
     const documents = procedure.documents;
 
     // Récupérer les informations de l'entreprise/cabinet de l'avocat
-    let avocatCompany = null;
+    let avocatCompany: {
+      email: string | null;
+      adresse: string | null;
+      codePostal: string | null;
+      ville: string | null;
+      telephone: string | null;
+      nomSociete: string;
+      logoUrl: string | null;
+    } | null = null;
     if (avocat) {
       avocatCompany = await prisma.company.findUnique({
         where: { userId: avocat.id },
@@ -143,7 +148,14 @@ export async function POST(request: NextRequest) {
     }
 
     // Récupérer les informations de l'entreprise du créancier (user)
-    let creancierCompany = null;
+    let creancierCompany: {
+      email: string | null;
+      adresse: string | null;
+      codePostal: string | null;
+      ville: string | null;
+      telephone: string | null;
+      nomSociete: string;
+    } | null = null;
     if (demandeur) {
       creancierCompany = await prisma.company.findUnique({
         where: { userId: demandeur.id },
@@ -201,7 +213,6 @@ export async function POST(request: NextRequest) {
     // Nom complet du créancier
     const nomCreancier = creancierCompany?.nomSociete || `${demandeur?.prenom || ""} ${demandeur?.nom || ""}`.trim() || "Notre client";
     const qualiteCreancier = creancierCompany ? "société" : "personne physique";
-    const adresseCreancier = creancierCompany?.adresse || demandeur?.adresse || "adresse à préciser";
     const adresseCompleteCreancier = creancierCompany
       ? `${creancierCompany.adresse || ""}${creancierCompany.codePostal && creancierCompany.ville ? `, ${creancierCompany.codePostal} ${creancierCompany.ville}` : ""}`.trim()
       : `${demandeur?.adresse || ""}${demandeur?.codePostal && demandeur?.ville ? `, ${demandeur.codePostal} ${demandeur.ville}` : ""}`.trim();
@@ -213,8 +224,6 @@ export async function POST(request: NextRequest) {
 
     // Nom complet du destinataire
     const nomDestinataire = client.nomSociete || `${client.prenom} ${client.nom}`.trim();
-    const adresseCompleteDestinataire = `${client.adresse || ""}${client.codePostal && client.ville ? `, ${client.codePostal} ${client.ville}` : client.ville ? `, ${client.ville}` : ""}`.trim();
-
     // Génération selon le nouveau modèle
     const med = {
       mise_en_demeure: {
@@ -279,14 +288,18 @@ export async function POST(request: NextRequest) {
             // Deux factures : utiliser "et"
             const facture1 = facturesInfo[0];
             const facture2 = facturesInfo[1];
-            phrases.push(`Il est constant et établi que vous êtes redevable envers notre mandant de la somme totale de ${montantChiffres} euros, soit ${montantLettres} euros, correspondant à la facture n° ${facture1.numero} du ${facture1.date} d'un montant de ${facture1.montant.toFixed(2)} euros et à la facture n° ${facture2.numero} du ${facture2.date} d'un montant de ${facture2.montant.toFixed(2)} euros. Ces factures revêtent le caractère de titres authentiques attestant l'engagement de paiement du prestataire et constituent, à ce titre, des créances liquides et exigibles.`);
+            if (facture1 && facture2) {
+              phrases.push(`Il est constant et établi que vous êtes redevable envers notre mandant de la somme totale de ${montantChiffres} euros, soit ${montantLettres} euros, correspondant à la facture n° ${facture1.numero} du ${facture1.date} d'un montant de ${facture1.montant.toFixed(2)} euros et à la facture n° ${facture2.numero} du ${facture2.date} d'un montant de ${facture2.montant.toFixed(2)} euros. Ces factures revêtent le caractère de titres authentiques attestant l'engagement de paiement du prestataire et constituent, à ce titre, des créances liquides et exigibles.`);
+            }
           } else if (factures.length > 2) {
             // Trois factures ou plus : utiliser des virgules et "et" avant la dernière
             const facturesListe = facturesInfo.slice(0, -1).map(f => 
               `la facture n° ${f.numero} du ${f.date} d'un montant de ${f.montant.toFixed(2)} euros`
             ).join(", ");
             const derniereFacture = facturesInfo[facturesInfo.length - 1];
-            phrases.push(`Il est constant et établi que vous êtes redevable envers notre mandant de la somme totale de ${montantChiffres} euros, soit ${montantLettres} euros, correspondant à ${facturesListe} et à la facture n° ${derniereFacture.numero} du ${derniereFacture.date} d'un montant de ${derniereFacture.montant.toFixed(2)} euros. Ces factures revêtent le caractère de titres authentiques attestant l'engagement de paiement du prestataire et constituent, à ce titre, des créances liquides et exigibles.`);
+            if (derniereFacture) {
+              phrases.push(`Il est constant et établi que vous êtes redevable envers notre mandant de la somme totale de ${montantChiffres} euros, soit ${montantLettres} euros, correspondant à ${facturesListe} et à la facture n° ${derniereFacture.numero} du ${derniereFacture.date} d'un montant de ${derniereFacture.montant.toFixed(2)} euros. Ces factures revêtent le caractère de titres authentiques attestant l'engagement de paiement du prestataire et constituent, à ce titre, des créances liquides et exigibles.`);
+            }
           } else {
             // Aucune facture
             phrases.push(`Il est constant et établi que vous êtes redevable envers notre mandant de la somme de ${montantChiffres} euros, soit ${montantLettres} euros. Cette créance revêt le caractère d'un titre authentique attestant l'engagement de paiement du prestataire et constitue, à ce titre, une créance liquide et exigible.`);

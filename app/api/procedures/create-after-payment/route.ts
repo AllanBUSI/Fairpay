@@ -67,16 +67,19 @@ export async function POST(request: NextRequest) {
 
         // Mettre à jour le client
         let client = existingProcedure.client;
-        if (client && siret && !siret.startsWith("DRAFT-")) {
+        const isParticulier = siret && siret.startsWith("PARTICULIER-");
+        const isDraftSiret = siret && siret.startsWith("DRAFT-");
+        
+        if (client && siret && !isDraftSiret) {
           if (client.siret !== siret) {
-            let newClient = await prisma.client.findUnique({ where: { siret } });
-            if (!newClient) {
-              newClient = await prisma.client.create({
+            // Si c'est un particulier, créer toujours un nouveau client
+            if (isParticulier) {
+              client = await prisma.client.create({
                 data: {
                   nom,
                   prenom,
                   siret,
-                  nomSociete: nomSociete || null,
+                  nomSociete: null, // Les particuliers n'ont pas de nom de société
                   adresse: adresse || null,
                   codePostal: codePostal || null,
                   ville: ville || null,
@@ -85,32 +88,58 @@ export async function POST(request: NextRequest) {
                 },
               });
             } else {
-              newClient = await prisma.client.update({
-                where: { id: newClient.id },
-                data: {
-                  nomSociete: nomSociete || newClient.nomSociete,
-                  adresse: adresse || newClient.adresse,
-                  codePostal: codePostal || newClient.codePostal,
-                  ville: ville || newClient.ville,
-                  email: email || newClient.email,
-                  telephone: telephone || newClient.telephone,
-                },
-              });
+              // Pour les entreprises, chercher ou créer par SIRET
+              let newClient = await prisma.client.findUnique({ where: { siret } });
+              if (!newClient) {
+                newClient = await prisma.client.create({
+                  data: {
+                    nom,
+                    prenom,
+                    siret,
+                    nomSociete: nomSociete || null,
+                    adresse: adresse || null,
+                    codePostal: codePostal || null,
+                    ville: ville || null,
+                    email: email || null,
+                    telephone: telephone || null,
+                  },
+                });
+              } else {
+                newClient = await prisma.client.update({
+                  where: { id: newClient.id },
+                  data: {
+                    nomSociete: nomSociete || newClient.nomSociete,
+                    adresse: adresse || newClient.adresse,
+                    codePostal: codePostal || newClient.codePostal,
+                    ville: ville || newClient.ville,
+                    email: email || newClient.email,
+                    telephone: telephone || newClient.telephone,
+                  },
+                });
+              }
+              client = newClient;
             }
-            client = newClient;
           } else {
+            // Mettre à jour le client existant
+            // Pour les particuliers, ne pas mettre à jour le nomSociete (toujours null)
+            const updateData: any = {
+              nom,
+              prenom,
+              adresse: adresse || client.adresse,
+              codePostal: codePostal || client.codePostal,
+              ville: ville || client.ville,
+              email: email || client.email,
+              telephone: telephone || client.telephone,
+            };
+            
+            // Ne mettre à jour nomSociete que si ce n'est pas un particulier
+            if (!isParticulier) {
+              updateData.nomSociete = nomSociete || client.nomSociete;
+            }
+            
             client = await prisma.client.update({
               where: { id: client.id },
-              data: {
-                nom,
-                prenom,
-                nomSociete: nomSociete || client.nomSociete,
-                adresse: adresse || client.adresse,
-                codePostal: codePostal || client.codePostal,
-                ville: ville || client.ville,
-                email: email || client.email,
-                telephone: telephone || client.telephone,
-              },
+              data: updateData,
             });
           }
         }
@@ -174,17 +203,17 @@ export async function POST(request: NextRequest) {
     const { nom, prenom, siret, nomSociete, adresse, codePostal, ville, email, telephone, contexte, dateFactureEchue, montantDue, montantTTC, dateRelance, dateRelance2, documents, echeancier, hasEcheancier, hasFacturation } = procedureData;
 
     // Vérifier ou créer le client
-    let client = await prisma.client.findUnique({
-      where: { siret },
-    });
-
-    if (!client) {
+    const isParticulier = siret && siret.startsWith("PARTICULIER-");
+    let client;
+    
+    if (isParticulier) {
+      // Pour les particuliers, créer toujours un nouveau client car chaque particulier a un SIRET unique
       client = await prisma.client.create({
         data: {
           nom,
           prenom,
           siret,
-          nomSociete: nomSociete || null,
+          nomSociete: null, // Les particuliers n'ont pas de nom de société
           adresse: adresse || null,
           codePostal: codePostal || null,
           ville: ville || null,
@@ -193,17 +222,38 @@ export async function POST(request: NextRequest) {
         },
       });
     } else {
-      client = await prisma.client.update({
-        where: { id: client.id },
-        data: {
-          nomSociete: nomSociete || client.nomSociete,
-          adresse: adresse || client.adresse,
-          codePostal: codePostal || client.codePostal,
-          ville: ville || client.ville,
-          email: email || client.email,
-          telephone: telephone || client.telephone,
-        },
+      // Pour les entreprises, chercher ou créer par SIRET
+      client = await prisma.client.findUnique({
+        where: { siret },
       });
+
+      if (!client) {
+        client = await prisma.client.create({
+          data: {
+            nom,
+            prenom,
+            siret,
+            nomSociete: nomSociete || null,
+            adresse: adresse || null,
+            codePostal: codePostal || null,
+            ville: ville || null,
+            email: email || null,
+            telephone: telephone || null,
+          },
+        });
+      } else {
+        client = await prisma.client.update({
+          where: { id: client.id },
+          data: {
+            nomSociete: nomSociete || client.nomSociete,
+            adresse: adresse || client.adresse,
+            codePostal: codePostal || client.codePostal,
+            ville: ville || client.ville,
+            email: email || client.email,
+            telephone: telephone || client.telephone,
+          },
+        });
+      }
     }
 
     // Créer la procédure

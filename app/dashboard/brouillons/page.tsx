@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Loader2, FileText, AlertCircle, Trash2 } from "lucide-react";
-import { ProcedureStatus } from "@/app/generated/prisma/enums";
 
 interface Procedure {
   id: string;
@@ -62,9 +61,6 @@ export default function BrouillonsPage() {
     }
   };
 
-  const handleRetryPayment = (procedureId: string) => {
-    router.push(`/dashboard/${procedureId}?retryPayment=true`);
-  };
 
   const handleDelete = async (procedureId: string) => {
     if (!confirm("Êtes-vous sûr de vouloir supprimer ce brouillon ? Cette action est irréversible.")) {

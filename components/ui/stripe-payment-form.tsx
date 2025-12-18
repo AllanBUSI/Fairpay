@@ -27,6 +27,7 @@ interface StripePaymentFormProps {
     miseEnDemeure: string | null;
     echeancier: string | null;
   };
+  clientSecret?: string | null; // ClientSecret optionnel si déjà créé
 }
 
 function PaymentForm({
@@ -40,6 +41,7 @@ function PaymentForm({
   promoCode,
   procedureId,
   priceIds,
+  clientSecret: providedClientSecret,
 }: Omit<StripePaymentFormProps, "amount"> & { amount: number }) {
   const stripe = useStripe();
   const elements = useElements();
@@ -62,7 +64,36 @@ function PaymentForm({
     try {
       let clientSecret: string;
 
-      if (isSubscription && priceId) {
+      // Si un clientSecret est déjà fourni, l'utiliser directement
+      if (providedClientSecret) {
+        clientSecret = providedClientSecret;
+      }
+      // Si c'est un abonnement avec paiement (hasFacturation), utiliser la nouvelle route
+      else if (hasFacturation && !isSubscription) {
+        const token = localStorage.getItem("token");
+        const response = await fetch("/api/stripe/create-subscription-with-payment", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            procedureData,
+            procedureId: procedureId || undefined,
+          }),
+        });
+
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.error || "Erreur lors de la création de l'abonnement et du paiement");
+        }
+        
+        if (!data.clientSecret) {
+          throw new Error("Erreur: secret de paiement manquant");
+        }
+        
+        clientSecret = data.clientSecret;
+      } else if (isSubscription && priceId) {
         // Créer une facturation
         const token = localStorage.getItem("token");
         const response = await fetch("/api/stripe/create-subscription", {
@@ -78,6 +109,11 @@ function PaymentForm({
         if (!response.ok) {
           throw new Error(data.error || "Erreur lors de la création de la facturation");
         }
+        
+        if (!data.clientSecret) {
+          throw new Error("Erreur: secret de paiement manquant pour l'abonnement");
+        }
+        
         clientSecret = data.clientSecret;
       } else {
         // Créer un PaymentIntent
@@ -130,10 +166,196 @@ function PaymentForm({
         setError(confirmError.message || "Erreur lors du paiement");
         onError(confirmError.message || "Erreur lors du paiement");
       } else if (paymentIntent && paymentIntent.status === "succeeded") {
-        // Créer la procédure immédiatement après paiement réussi
-        if (procedureData && !isSubscription) {
+        const token = localStorage.getItem("token");
+        
+        // Si hasFacturation est true, confirmer le paiement et mettre à jour la procédure
+        if (hasFacturation && procedureId) {
           try {
-            const token = localStorage.getItem("token");
+            console.log(`📧 Confirmation du paiement avec abonnement pour la procédure ${procedureId}`);
+            const confirmResponse = await fetch("/api/stripe/confirm-subscription-payment", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${token}`,
+              },
+              body: JSON.stringify({
+                paymentIntentId: paymentIntent.id,
+                procedureId,
+              }),
+            });
+
+            if (!confirmResponse.ok) {
+              const errorData = await confirmResponse.json();
+              console.error("❌ Erreur lors de la confirmation du paiement:", errorData);
+              // Si la confirmation échoue, ne pas continuer - le statut restera en BROUILLONS
+              throw new Error(errorData.error || "Erreur lors de la confirmation du paiement. Le dossier reste en brouillon.");
+            } else {
+              const successData = await confirmResponse.json();
+              console.log("✅ Confirmation du paiement avec abonnement réussie:", successData);
+              // Le statut a été mis à jour à NOUVEAU dans l'API
+            }
+          } catch (err) {
+            console.error("❌ Erreur lors de la confirmation du paiement:", err);
+            // Si la confirmation échoue, ne pas appeler onSuccess - le statut reste en BROUILLONS
+            setError(err instanceof Error ? err.message : "Erreur lors de la confirmation du paiement. Le dossier reste en brouillon.");
+            onError(err instanceof Error ? err.message : "Erreur lors de la confirmation du paiement");
+            return; // Ne pas continuer si la confirmation échoue
+          }
+        }
+        // Si un clientSecret est fourni sans procedureId, c'est peut-être un retry de paiement ou d'abonnement
+        else if (providedClientSecret && !procedureId && !hasFacturation) {
+          // Vérifier si c'est un retry d'abonnement via les métadonnées
+          const isSubscriptionRetry = (paymentIntent as any).metadata?.["isSubscriptionRetry"] === "true";
+          
+          if (isSubscriptionRetry) {
+            try {
+              const subscriptionId = (paymentIntent as any).metadata?.["subscriptionId"];
+              if (subscriptionId) {
+                const confirmResponse = await fetch("/api/subscriptions/confirm-retry-payment", {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${token}`,
+                  },
+                  body: JSON.stringify({
+                    paymentIntentId: paymentIntent.id,
+                    subscriptionId,
+                  }),
+                });
+
+                if (!confirmResponse.ok) {
+                  const errorData = await confirmResponse.json();
+                  console.error("❌ Erreur lors de la confirmation du paiement d'abonnement:", errorData);
+                  throw new Error(errorData.error || "Erreur lors de la confirmation du paiement");
+                } else {
+                  const successData = await confirmResponse.json();
+                  console.log("✅ Confirmation du paiement d'abonnement réussie:", successData);
+                }
+              }
+            } catch (err) {
+              console.error("❌ Erreur lors de la confirmation du paiement d'abonnement:", err);
+              setError(err instanceof Error ? err.message : "Erreur lors de la confirmation du paiement");
+              onError(err instanceof Error ? err.message : "Erreur lors de la confirmation du paiement");
+              return;
+            }
+          } else {
+            // C'est un retry de paiement simple, utiliser confirm-payment-simple
+            // Récupérer le procedureId depuis les métadonnées du PaymentIntent si c'est un retry
+            const retryProcedureId = (paymentIntent as any).metadata?.["procedureId"] || null;
+            
+            try {
+              const confirmResponse = await fetch("/api/stripe/confirm-payment-simple", {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify({
+                  paymentIntentId: paymentIntent.id,
+                  procedureId: retryProcedureId,
+                }),
+              });
+
+              if (!confirmResponse.ok) {
+                const errorData = await confirmResponse.json();
+                console.error("❌ Erreur lors de la confirmation du paiement:", errorData);
+                throw new Error(errorData.error || "Erreur lors de la confirmation du paiement");
+              } else {
+                const successData = await confirmResponse.json();
+                console.log("✅ Confirmation du paiement réussie:", successData);
+              }
+            } catch (err) {
+              console.error("❌ Erreur lors de la confirmation du paiement:", err);
+              setError(err instanceof Error ? err.message : "Erreur lors de la confirmation du paiement");
+              onError(err instanceof Error ? err.message : "Erreur lors de la confirmation du paiement");
+              return;
+            }
+          }
+        }
+        // Si un clientSecret est fourni et qu'on a un procedureId, c'est un paiement simple ou une injonction
+        else if (providedClientSecret && procedureId && !hasFacturation) {
+          // Vérifier si c'est une injonction (via les métadonnées du PaymentIntent)
+          const isInjonctionFromMetadata = (paymentIntent as any).metadata?.["isInjonction"] === "true";
+          
+          // Vérifier aussi le statut actuel de la procédure pour être sûr
+          let isInjonctionFromProcedure = false;
+          try {
+            const procedureResponse = await fetch(`/api/procedures/${procedureId}`, {
+              headers: {
+                Authorization: `Bearer ${token}`,
+              },
+            });
+            if (procedureResponse.ok) {
+              const procedureData = await procedureResponse.json();
+              isInjonctionFromProcedure = procedureData.status === "INJONCTION_DE_PAIEMENT" || 
+                                          procedureData.status === "INJONCTION_DE_PAIEMENT_PAYER";
+            }
+          } catch (err) {
+            console.warn("Impossible de vérifier le statut de la procédure:", err);
+          }
+          
+          const isInjonction = isInjonctionFromMetadata || isInjonctionFromProcedure;
+          
+          console.log(`🔍 Type de paiement détecté: ${isInjonction ? "INJONCTION" : "SIMPLE"}`);
+          console.log(`📋 PaymentIntent metadata:`, (paymentIntent as any).metadata);
+          console.log(`📋 isInjonctionFromMetadata: ${isInjonctionFromMetadata}, isInjonctionFromProcedure: ${isInjonctionFromProcedure}`);
+          
+          try {
+            const confirmEndpoint = isInjonction 
+              ? "/api/stripe/confirm-injonction-payment"
+              : "/api/stripe/confirm-payment-simple";
+            
+            console.log(`📞 Appel de la route de confirmation: ${confirmEndpoint}`);
+            
+            // Récupérer le procedureId depuis les métadonnées si c'est un retry
+            const retryProcedureId = (paymentIntent as any).metadata?.["procedureId"] || procedureId;
+            
+            const confirmResponse = await fetch(confirmEndpoint, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${token}`,
+              },
+              body: JSON.stringify({
+                paymentIntentId: paymentIntent.id,
+                procedureId: retryProcedureId,
+              }),
+            });
+
+            if (!confirmResponse.ok) {
+              const errorData = await confirmResponse.json();
+              console.error("❌ Erreur lors de la confirmation du paiement:", errorData);
+              // Si c'est une injonction et que la route simple a été appelée par erreur, réessayer avec la bonne route
+              if (errorData.isInjonction && !isInjonction) {
+                console.log("🔄 Réessai avec la route d'injonction...");
+                const retryResponse = await fetch("/api/stripe/confirm-injonction-payment", {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${token}`,
+                  },
+                  body: JSON.stringify({
+                    paymentIntentId: paymentIntent.id,
+                    procedureId,
+                  }),
+                });
+                if (retryResponse.ok) {
+                  const retryData = await retryResponse.json();
+                  console.log("✅ Confirmation du paiement d'injonction réussie après réessai:", retryData);
+                }
+              }
+            } else {
+              const successData = await confirmResponse.json();
+              console.log("✅ Confirmation du paiement réussie:", successData);
+            }
+          } catch (err) {
+            console.error("❌ Erreur lors de la confirmation du paiement:", err);
+            // Ne pas bloquer le succès du paiement, la procédure sera mise à jour via le webhook
+          }
+        }
+        // Si hasFacturation est false et qu'on a procedureData, créer la procédure immédiatement après paiement réussi
+        else if (procedureData && !isSubscription && !hasFacturation && !providedClientSecret) {
+          try {
             const createResponse = await fetch("/api/procedures/create-after-payment", {
               method: "POST",
               headers: {
@@ -157,10 +379,14 @@ function PaymentForm({
             // Ne pas bloquer le succès du paiement, la procédure sera créée via le webhook
           }
         }
+        // Appeler onSuccess seulement si la confirmation a réussi (ou si ce n'est pas un paiement avec abonnement)
         onSuccess();
       } else if (paymentIntent && paymentIntent.status === "processing") {
         // Pour les abonnements, le statut peut être "processing"
-        onSuccess();
+        // Dans ce cas, ne pas appeler onSuccess car le paiement n'est pas encore confirmé
+        // Le statut restera en BROUILLONS jusqu'à confirmation
+        console.log("⏳ Paiement en cours de traitement. Le statut restera en BROUILLONS jusqu'à confirmation.");
+        setError("Le paiement est en cours de traitement. Vous serez notifié lorsque le paiement sera confirmé.");
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Une erreur est survenue";

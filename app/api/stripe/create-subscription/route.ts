@@ -3,7 +3,7 @@ import Stripe from "stripe";
 import { prisma } from "@/lib/prisma";
 import { verifyToken } from "@/lib/jwt";
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
+const stripe = new Stripe(process.env["STRIPE_SECRET_KEY"] || "", {
   apiVersion: "2025-11-17.clover",
 });
 
@@ -71,18 +71,70 @@ export async function POST(request: NextRequest) {
       items: [{ price: priceId }],
       payment_behavior: "default_incomplete",
       payment_settings: { save_default_payment_method: "on_subscription" },
-      expand: ["latest_invoice.payment_intent"],
+      expand: ["latest_invoice.payment_intent", "pending_setup_intent"],
       metadata: {
         userId: user.id,
       },
     });
 
-    const invoice = subscription.latest_invoice as Stripe.Invoice & { payment_intent?: Stripe.PaymentIntent };
-    const paymentIntent = (invoice.payment_intent ?? null) as Stripe.PaymentIntent | null;
+    // Récupérer le clientSecret depuis PaymentIntent ou SetupIntent
+    let clientSecret: string | null = null;
+    
+    // Vérifier d'abord le pending_setup_intent (pour les abonnements avec période d'essai ou montant faible)
+    if (subscription.pending_setup_intent) {
+      const setupIntentId = typeof subscription.pending_setup_intent === 'string'
+        ? subscription.pending_setup_intent
+        : subscription.pending_setup_intent.id;
+      
+      const setupIntent = typeof subscription.pending_setup_intent === 'string'
+        ? await stripe.setupIntents.retrieve(setupIntentId)
+        : subscription.pending_setup_intent;
+      
+      if (setupIntent && setupIntent.client_secret) {
+        clientSecret = setupIntent.client_secret;
+      }
+    }
+    
+    // Sinon, vérifier le PaymentIntent depuis l'invoice
+    if (!clientSecret && subscription.latest_invoice) {
+      const invoiceId = typeof subscription.latest_invoice === 'string' 
+        ? subscription.latest_invoice 
+        : subscription.latest_invoice.id;
+      
+      const fullInvoiceResponse = await stripe.invoices.retrieve(invoiceId, {
+        expand: ['payment_intent'],
+      });
+      
+      const fullInvoice = fullInvoiceResponse as Stripe.Invoice & { payment_intent?: Stripe.PaymentIntent | string };
+      
+      if (fullInvoice.payment_intent) {
+        const paymentIntentId = typeof fullInvoice.payment_intent === 'string'
+          ? fullInvoice.payment_intent
+          : fullInvoice.payment_intent.id;
+        
+        const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
+        if (paymentIntent && paymentIntent.client_secret) {
+          clientSecret = paymentIntent.client_secret;
+        }
+      }
+    }
+
+    if (!clientSecret) {
+      console.error("Détails de l'abonnement:", {
+        subscriptionId: subscription.id,
+        latest_invoice: subscription.latest_invoice,
+        pending_setup_intent: subscription.pending_setup_intent,
+        status: subscription.status,
+      });
+      return NextResponse.json(
+        { error: "Impossible de créer le secret de paiement pour l'abonnement. Veuillez utiliser Stripe Checkout pour les abonnements." },
+        { status: 500 }
+      );
+    }
 
     return NextResponse.json({
       subscriptionId: subscription.id,
-      clientSecret: paymentIntent?.client_secret ?? null,
+      clientSecret: clientSecret,
     });
   } catch (error) {
     console.error("Erreur lors de la création de l'abonnement:", error);

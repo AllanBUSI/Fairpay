@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { FileText, Download, X, Loader2, CheckCircle2, Send, MapPin, User, Building2, Mail, Phone, Calendar, Euro } from "lucide-react";
+import { FileText, Download, X, Loader2, CheckCircle2, MapPin, User, Mail, Phone, Calendar, Euro } from "lucide-react";
 import { DocumentViewer } from "@/components/ui/document-viewer";
 
 interface Client {
@@ -36,7 +36,7 @@ export default function RelecturePage() {
   const router = useRouter();
   const params = useParams();
   const searchParams = useSearchParams();
-  const procedureId = params.id as string;
+  const procedureId = params["id"] as string;
   const mergedPdfId = searchParams.get("mergedPdfId");
   const [mergedPdfUrl, setMergedPdfUrl] = useState<string | null>(null);
   const [procedure, setProcedure] = useState<Procedure | null>(null);
