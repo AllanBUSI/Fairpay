@@ -8,16 +8,16 @@ import { ScrollAnimation } from "./scroll-animation";
 
 export function CTASection() {
   return (
-    <section className="py-32 px-4 sm:px-6 lg:px-8 bg-[#0F172A] text-white relative overflow-hidden">
+    <section className="py-20 sm:py-32 px-4 sm:px-6 lg:px-8 bg-[#0F172A] text-white relative overflow-hidden">
       {/* Éléments décoratifs */}
       <div className="absolute top-0 right-0 w-96 h-96 bg-[#2563EB]/10 rounded-full blur-3xl animate-float"></div>
       <div className="absolute bottom-0 left-0 w-96 h-96 bg-[#16A34A]/10 rounded-full blur-3xl animate-float" style={{ animationDelay: "1s" }}></div>
-      
-      {/* Lignes décoratives */}
-      <div className="absolute inset-0 pointer-events-none opacity-30">
+
+      {/* Lignes décoratives - Masquées sur mobile */}
+      <div className="absolute inset-0 pointer-events-none opacity-30 hidden md:block">
         <DecorativeLines variant="diagonal" />
       </div>
-      
+
       <div className="container mx-auto max-w-7xl text-center relative z-10">
         <ScrollAnimation animation="fadeInDown" delay={0}>
           <h2 className="text-4xl sm:text-5xl lg:text-6xl font-black text-white mb-8 tracking-[-0.03em]">
@@ -26,11 +26,11 @@ export function CTASection() {
         </ScrollAnimation>
         <ScrollAnimation animation="fadeInUp" delay={100}>
           <p className="text-xl sm:text-2xl mb-12 text-white/80 max-w-3xl mx-auto font-light leading-relaxed">
-            Ne laissez plus vos factures impayées impacter votre trésorerie. 
+            Ne laissez plus vos factures impayées impacter votre trésorerie.
             Un avocat qualifié est prêt à prendre en charge votre dossier dès aujourd'hui.
           </p>
         </ScrollAnimation>
-        
+
         <ScrollAnimation animation="scaleIn" delay={200}>
           <div className="flex flex-col sm:flex-row gap-4 justify-center items-center mb-16">
             <Link href="/login">
@@ -41,7 +41,7 @@ export function CTASection() {
             </Link>
           </div>
         </ScrollAnimation>
-        
+
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-8 max-w-4xl mx-auto">
           <ScrollAnimation animation="fadeInLeft" delay={300}>
             <div className="flex flex-col items-center p-6 border-2 border-white/20 rounded-lg hover:border-[#16A34A] transition-all duration-300 hover:scale-105 hover:shadow-xl">

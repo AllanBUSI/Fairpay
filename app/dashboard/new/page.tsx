@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { FileUpload } from "@/components/ui/file-upload";
-import { ShoppingCart } from "lucide-react";
+import { ShoppingCart, Loader2 } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -143,15 +143,15 @@ export default function NewProcedurePage() {
             contexte: procedure.contexte ?? "",
             dateFactureEchue: procedure.dateFactureEchue
               ? new Date(procedure.dateFactureEchue).toISOString().split("T")[0]
-              : undefined,
-            montantDue: procedure.montantDue != null ? procedure.montantDue.toString() : undefined,
+              : "",
+            montantDue: procedure.montantDue != null ? procedure.montantDue.toString() : "",
             montantTTC: procedure.montantTTC ?? true,
             dateRelance: procedure.dateRelance
               ? new Date(procedure.dateRelance).toISOString().split("T")[0]
-              : undefined,
+              : "",
             dateRelance2: procedure.dateRelance2
               ? new Date(procedure.dateRelance2).toISOString().split("T")[0]
-              : undefined,
+              : "",
           });
         }
 
@@ -265,11 +265,11 @@ export default function NewProcedurePage() {
     telephone: string;
     numeroFacture: string;
     contexte: string;
-    dateFactureEchue: string | undefined;
-    montantDue: string | undefined;
+    dateFactureEchue: string;
+    montantDue: string;
     montantTTC: boolean;
-    dateRelance: string | undefined;
-    dateRelance2: string | undefined;
+    dateRelance: string;
+    dateRelance2: string;
   }>({
     nom: "",
     prenom: "",
@@ -282,11 +282,11 @@ export default function NewProcedurePage() {
     email: "",
     telephone: "",
     contexte: "",
-    dateFactureEchue: undefined,
-    montantDue: undefined,
+    dateFactureEchue: "",
+    montantDue: "",
     montantTTC: true,
-    dateRelance: undefined,
-    dateRelance2: undefined,
+    dateRelance: "",
+    dateRelance2: "",
   });
 
   // Informations pour chaque facture
@@ -361,7 +361,7 @@ export default function NewProcedurePage() {
       const dateRelance2 = new Date(formData.dateRelance2);
       const diffTime = dateRelance2.getTime() - dateRelance1.getTime();
       const diffDays = diffTime / (1000 * 60 * 60 * 24);
-      
+
       if (diffDays < 7) {
         setError("La date de relance 2 doit être au moins 7 jours après la date de relance 1.");
         return;
@@ -397,12 +397,12 @@ export default function NewProcedurePage() {
       fileSize: number;
       mimeType: string;
       type: string;
-          numeroFacture?: string | null;
-          dateFactureEchue?: string | null;
-          montantDue?: number | null;
-          montantTTC?: boolean | null;
+      numeroFacture?: string | null;
+      dateFactureEchue?: string | null;
+      montantDue?: number | null;
+      montantTTC?: boolean | null;
     }> = [];
-    
+
     Object.entries(filesByType).forEach(([type, files]) => {
       files.forEach((file, index) => {
         const documentData: {
@@ -419,7 +419,7 @@ export default function NewProcedurePage() {
           ...file,
           type,
         };
-        
+
         // Ajouter les informations de facture si c'est une facture
         if (type === "FACTURE") {
           const info = facturesInfo[index];
@@ -430,18 +430,18 @@ export default function NewProcedurePage() {
             documentData.montantTTC = info.montantTTC ?? true;
           }
         }
-        
+
         allDocuments.push(documentData);
       });
     });
 
     // Générer l'écheancier automatiquement si activé
-      let echeancierData: Array<{ date: string; montant: number }> | null = null;
+    let echeancierData: Array<{ date: string; montant: number }> | null = null;
     if (hasEcheancier && nombreEcheances > 0 && nombreEcheances <= 5 && formData.montantDue) {
       const montantTotal = parseFloat(formData.montantDue);
       const montantParEcheance = montantTotal / nombreEcheances;
       const dateDebut = formData.dateFactureEchue ? new Date(formData.dateFactureEchue) : new Date();
-      
+
       echeancierData = [];
       const nombreEcheancesLimite = Math.min(5, nombreEcheances);
       for (let i = 0; i < nombreEcheancesLimite; i++) {
@@ -449,7 +449,7 @@ export default function NewProcedurePage() {
         dateEcheance.setMonth(dateEcheance.getMonth() + (i + 1) * delaiPaiement);
         // Toujours mettre le jour au 5 du mois
         dateEcheance.setDate(5);
-        
+
         echeancierData.push({
           date: dateEcheance.toISOString().split('T')[0],
           montant: Math.round(montantParEcheance * 100) / 100, // Arrondir à 2 décimales
@@ -505,7 +505,7 @@ export default function NewProcedurePage() {
         montantDue?: number | null;
         montantTTC?: boolean | null;
       }> = [];
-      
+
       // Collecter tous les fichiers uploadés (même si incomplets)
       Object.entries(filesByType).forEach(([type, files]) => {
         files.forEach((file, index) => {
@@ -523,7 +523,7 @@ export default function NewProcedurePage() {
             ...file,
             type,
           };
-          
+
           // Ajouter les informations de facture si disponibles
           if (type === "FACTURE") {
             const info = facturesInfo[index];
@@ -534,7 +534,7 @@ export default function NewProcedurePage() {
               documentData.montantTTC = info.montantTTC !== undefined ? Boolean(info.montantTTC) : null;
             }
           }
-          
+
           allDocuments.push(documentData);
         });
       });
@@ -546,14 +546,14 @@ export default function NewProcedurePage() {
         if (!isNaN(montantTotal) && montantTotal > 0) {
           const montantParEcheance = montantTotal / nombreEcheances;
           const dateDebut = formData.dateFactureEchue ? new Date(formData.dateFactureEchue) : new Date();
-          
+
           echeancierData = [];
           const nombreEcheancesLimite = Math.min(5, nombreEcheances);
           for (let i = 0; i < nombreEcheancesLimite; i++) {
             const dateEcheance = new Date(dateDebut);
             dateEcheance.setMonth(dateEcheance.getMonth() + (i + 1) * delaiPaiement);
             dateEcheance.setDate(5);
-            
+
             echeancierData.push({
               date: dateEcheance.toISOString().split('T')[0],
               montant: Math.round(montantParEcheance * 100) / 100,
@@ -641,7 +641,7 @@ export default function NewProcedurePage() {
 
       // Si l'utilisateur veut un abonnement + mise en demeure, utiliser la nouvelle route
       const shouldIncludeSubscription = hasFacturation && !isSubscribed;
-      
+
       if (shouldIncludeSubscription) {
         // Utiliser la nouvelle route pour créer l'abonnement avec 30 jours gratuits + paiement
         const response = await fetch("/api/stripe/create-subscription-with-payment", {
@@ -733,8 +733,8 @@ export default function NewProcedurePage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted/20">
-      <div className="container mx-auto max-w-4xl px-4 py-8 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-white">
+      <div className="container mx-auto max-w-4xl px-4 py-4 sm:py-6 lg:py-8 sm:px-6 lg:px-8">
         {/* Header */}
         <div className="mb-8">
           <div>
@@ -755,7 +755,7 @@ export default function NewProcedurePage() {
             {/* Client Information */}
             <div>
               <h2 className="mb-4 text-lg font-semibold">Informations du client</h2>
-              
+
               {/* Type de client */}
               <div className="mb-4 grid gap-2">
                 <Label htmlFor="clientType">Type de client *</Label>
@@ -934,7 +934,7 @@ export default function NewProcedurePage() {
                     <Input
                       id="dateFactureEchue"
                       type="date"
-                      value={formData.dateFactureEchue}
+                      value={formData.dateFactureEchue || ""}
                       onChange={(e) =>
                         setFormData({
                           ...formData,
@@ -968,7 +968,7 @@ export default function NewProcedurePage() {
                       type="number"
                       step="0.01"
                       min="0"
-                      value={formData.montantDue}
+                      value={formData.montantDue || ""}
                       onChange={(e) =>
                         setFormData({
                           ...formData,
@@ -1006,7 +1006,7 @@ export default function NewProcedurePage() {
                     <Input
                       id="dateRelance"
                       type="date"
-                      value={formData.dateRelance}
+                      value={formData.dateRelance || ""}
                       onChange={(e) => {
                         const newDate = e.target.value;
                         setFormData({
@@ -1032,7 +1032,7 @@ export default function NewProcedurePage() {
                     <Input
                       id="dateRelance2"
                       type="date"
-                      value={formData.dateRelance2}
+                      value={formData.dateRelance2 || ""}
                       onChange={(e) => {
                         const newDate = e.target.value;
                         setFormData({
@@ -1140,13 +1140,13 @@ export default function NewProcedurePage() {
                           const montantParEcheance = montantTotal / nombreEcheances;
                           const dateDebut = new Date(formData.dateFactureEchue);
                           const echeances: Array<{ date: string; montant: number }> = [];
-                          
+
                           for (let i = 0; i < nombreEcheances; i++) {
                             const dateEcheance = new Date(dateDebut);
                             dateEcheance.setMonth(dateEcheance.getMonth() + (i + 1) * delaiPaiement);
                             // Toujours mettre le jour au 5 du mois
                             dateEcheance.setDate(5);
-                            
+
                             echeances.push({
                               date: dateEcheance.toLocaleDateString("fr-FR", {
                                 day: "2-digit",
@@ -1156,7 +1156,7 @@ export default function NewProcedurePage() {
                               montant: Math.round(montantParEcheance * 100) / 100,
                             });
                           }
-                          
+
                           return echeances.map((echeance, index) => (
                             <div
                               key={index}
@@ -1165,29 +1165,17 @@ export default function NewProcedurePage() {
                               <span className="font-medium">
                                 Échéance {index + 1} : {echeance.date}
                               </span>
-                              <span className="font-semibold text-primary">
-                                {new Intl.NumberFormat("fr-FR", {
-                                  style: "currency",
-                                  currency: "EUR",
-                                }).format(echeance.montant)}
-                              </span>
                             </div>
                           ));
                         })()}
-                      </div>
-                      <p className="text-xs text-muted-foreground pt-2 border-t">
-                        Total : {new Intl.NumberFormat("fr-FR", {
-                          style: "currency",
-                          currency: "EUR",
-                        }).format(parseFloat(formData.montantDue) || 0)}
-                      </p>
-                    </div>
-                  )}
 
-                  {(!formData.montantDue || !formData.dateFactureEchue) && (
-                    <p className="text-sm text-muted-foreground">
-                      Veuillez renseigner le montant dû et la date de facture échue pour voir l'aperçu de l'écheancier.
-                    </p>
+                        {(!formData.montantDue || !formData.dateFactureEchue) && (
+                          <p className="text-sm text-muted-foreground">
+                            Veuillez renseigner le montant dû et la date de facture échue pour voir l'aperçu de l'écheancier.
+                          </p>
+                        )}
+                      </div>
+                    </div>
                   )}
                 </div>
               )}
@@ -1203,7 +1191,7 @@ export default function NewProcedurePage() {
                 {DOCUMENT_TYPES.map((docType) => {
                   const isRequired = docType.value === "FACTURE";
                   const files = filesByType[docType.value];
-                  
+
                   return (
                     <div key={docType.value}>
                       <FileUpload
@@ -1217,7 +1205,7 @@ export default function NewProcedurePage() {
                           La facture est obligatoire
                         </p>
                       )}
-                      
+
                       {/* Informations pour chaque facture */}
                       {docType.value === "FACTURE" && files && files.length > 0 && (
                         <div className="mt-4 space-y-4">
@@ -1227,8 +1215,8 @@ export default function NewProcedurePage() {
                           {files.map((file, index) => {
                             const info: FactureInfo = facturesInfo[index] || {
                               numeroFacture: "",
-                              dateFactureEchue: undefined,
-                              montantDue: undefined,
+                              dateFactureEchue: "",
+                              montantDue: "",
                               montantTTC: true,
                             };
                             // S'assurer que toutes les valeurs sont des chaînes, jamais undefined
@@ -1326,15 +1314,7 @@ export default function NewProcedurePage() {
               </div>
             </div>
 
-            {/* Error Message */}
-            {error && (
-              <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive">
-                {error}
-              </div>
-            )}
-
-            {/* Actions */}
-            <div className="flex justify-end gap-4 border-t pt-6">
+            <div className="flex flex-col sm:flex-row justify-end gap-3 pt-6 border-t">
               <Button
                 type="button"
                 variant="outline"
@@ -1345,36 +1325,55 @@ export default function NewProcedurePage() {
               </Button>
               <Button
                 type="button"
-                variant="outline"
+                variant="secondary"
                 onClick={handleSaveDraft}
                 disabled={submitting || savingDraft}
               >
-                {savingDraft ? "Sauvegarde..." : "Finir plus tard"}
+                {savingDraft ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Sauvegarde...
+                  </>
+                ) : (
+                  "Enregistrer le brouillon"
+                )}
               </Button>
-              <Button type="submit" disabled={submitting || savingDraft}>
-                {submitting 
-                  ? (isEditingDraft ? "Finalisation en cours..." : "Création en cours...") 
-                  : (isEditingDraft ? "Finaliser le dossier" : "Créer le dossier")}
+              <Button
+                type="submit"
+                disabled={submitting || savingDraft}
+                className="bg-[#0F172A] hover:bg-[#0F172A]/90 text-white"
+              >
+                {submitting ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Traitement...
+                  </>
+                ) : (
+                  <>
+                    <ShoppingCart className="mr-2 h-4 w-4" />
+                    Payer et créer le dossier
+                  </>
+                )}
               </Button>
             </div>
           </form>
         </div>
-      </div>
+      </div >
 
-      {/* Panier */}
       <Dialog open={showCart} onOpenChange={setShowCart}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <ShoppingCart className="h-5 w-5" />
-              Panier
-            </DialogTitle>
-            <DialogDescription>
-              Récapitulatif de votre commande
-            </DialogDescription>
+            <DialogTitle>Récapitulatif de votre commande</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-4">
-            {/* Option facturation - seulement si pas déjà abonné */}
+
+            {/* Error Message */}
+            {error && (
+              <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive">
+                {error}
+              </div>
+            )}
+
             {!isSubscribed ? (
               <div className="rounded-lg border-2 p-4 bg-muted/50">
                 <div className="flex items-start justify-between gap-4">
@@ -1524,179 +1523,177 @@ export default function NewProcedurePage() {
               </div>
             </div>
           </div>
+        <div className="flex gap-3 pt-4">
+          <Button
+            variant="outline"
+            onClick={() => setShowCart(false)}
+            disabled={submitting}
+            className="flex-1"
+          >
+            Annuler
+          </Button>
+          <Button
+            onClick={handleConfirmCart}
+            disabled={submitting}
+            className="flex-1"
+          >
+            {submitting ? "Création en cours..." : "Confirmer et créer le dossier"}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
 
-          <div className="flex gap-3 pt-4">
-            <Button
-              variant="outline"
-              onClick={() => setShowCart(false)}
-              disabled={submitting}
-              className="flex-1"
-            >
-              Annuler
-            </Button>
-            <Button
-              onClick={handleConfirmCart}
-              disabled={submitting}
-              className="flex-1"
-            >
-              {submitting ? "Création en cours..." : "Confirmer et créer le dossier"}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Dark pattern pour reproposer la facturation */}
-      <Dialog open={showFacturationPrompt} onOpenChange={setShowFacturationPrompt}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="text-red-600">⚠️ Vous allez payer plus cher</DialogTitle>
-            <DialogDescription>
-              En refusant la facturation, vous allez payer {hasEcheancier ? "228 € HT (273,60 € TTC)" : "179 € HT (214,80 € TTC)"} au lieu de 128 € HT (153,60 € TTC).
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="rounded-lg border-2 border-red-200 bg-red-50 p-4">
-              <p className="text-sm font-medium text-red-900 mb-2">
-                ⚠️ Vous perdez {hasEcheancier ? "120 € TTC" : "61,20 € TTC"} en refusant la facturation
-              </p>
-              <p className="text-xs text-red-700">
-                La facturation à 34,80 € TTC vous fait économiser {hasEcheancier ? "120 € TTC" : "61,20 € TTC"} sur cette commande et vous donne accès à l'écheancier gratuit.
+    {/* Dark pattern pour reproposer la facturation */}
+    <Dialog open={showFacturationPrompt} onOpenChange={setShowFacturationPrompt}>
+    <DialogContent className="sm:max-w-md">
+      <DialogHeader>
+        <DialogTitle className="text-red-600">⚠️ Vous allez payer plus cher</DialogTitle>
+        <DialogDescription>
+          En refusant la facturation, vous allez payer {hasEcheancier ? "228 € HT (273,60 € TTC)" : "179 € HT (214,80 € TTC)"} au lieu de 128 € HT (153,60 € TTC).
+        </DialogDescription>
+      </DialogHeader>
+      <div className="space-y-4 py-4">
+        <div className="rounded-lg border-2 border-red-200 bg-red-50 p-4">
+          <p className="text-sm font-medium text-red-900 mb-2">
+            ⚠️ Vous perdez {hasEcheancier ? "120 € TTC" : "61,20 € TTC"} en refusant la facturation
+          </p>
+          <p className="text-xs text-red-700">
+            La facturation à 34,80 € TTC vous fait économiser {hasEcheancier ? "120 € TTC" : "61,20 € TTC"} sur cette commande et vous donne accès à l'écheancier gratuit.
+          </p>
+        </div>
+        <div className="rounded-lg border-2 border-green-200 bg-green-50 p-4">
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex-1">
+              <div className="flex items-center gap-2 mb-1">
+                <input
+                  type="checkbox"
+                  id="facturation-prompt"
+                  checked={hasFacturation}
+                  onChange={(e) => setHasFacturation(e.target.checked)}
+                  className="h-4 w-4 rounded border-gray-300"
+                />
+                <label htmlFor="facturation-prompt" className="font-semibold text-lg cursor-pointer">
+                  Je veux économiser avec la facturation
+                </label>
+              </div>
+              <p className="text-sm text-muted-foreground ml-6">
+                Facturation mensuelle à 34,80 € TTC - Écheancier gratuit inclus
               </p>
             </div>
-            <div className="rounded-lg border-2 border-green-200 bg-green-50 p-4">
-              <div className="flex items-start justify-between gap-4">
-                <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-1">
-                    <input
-                      type="checkbox"
-                      id="facturation-prompt"
-                      checked={hasFacturation}
-                      onChange={(e) => setHasFacturation(e.target.checked)}
-                      className="h-4 w-4 rounded border-gray-300"
-                    />
-                    <label htmlFor="facturation-prompt" className="font-semibold text-lg cursor-pointer">
-                      Je veux économiser avec la facturation
-                    </label>
-                  </div>
-                  <p className="text-sm text-muted-foreground ml-6">
-                    Facturation mensuelle à 34,80 € TTC - Écheancier gratuit inclus
+            <div className="text-right">
+              <p className="font-bold text-xl text-green-600">34,80 € TTC</p>
+              <p className="text-sm text-muted-foreground">/ mois</p>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div className="flex gap-3 pt-4">
+        <Button
+          variant="outline"
+          onClick={handleSkipFacturation}
+          className="flex-1"
+        >
+          Non
+        </Button>
+        <Button
+          onClick={async () => {
+            setHasFacturation(true);
+            setShowFacturationPrompt(false);
+            // Afficher le panier avec l'abonnement activé
+            setShowCart(true);
+          }}
+          className="flex-1 bg-green-600 hover:bg-green-700"
+        >
+          Oui, je veux économiser
+        </Button>
+      </div>
+    </DialogContent>
+  </Dialog>
+
+  {/* Dialog pour le formulaire de paiement interne */}
+  <Dialog open={showPaymentForm} onOpenChange={setShowPaymentForm}>
+    <DialogContent className="sm:max-w-md">
+      <DialogHeader>
+        <DialogTitle>Paiement</DialogTitle>
+        <DialogDescription>
+          {hasFacturation && !isSubscribed
+            ? "Abonnement avec 30 jours gratuits + Mise en demeure"
+            : "Finalisez votre paiement"}
+        </DialogDescription>
+      </DialogHeader>
+      <div className="space-y-4 py-4">
+        {hasFacturation && !isSubscribed && (
+          <div className="rounded-lg border-2 border-green-200 bg-green-50 p-4">
+            <p className="text-sm font-semibold text-green-900 mb-2">
+              🎉 Abonnement avec 30 jours gratuits
+            </p>
+            <p className="text-xs text-green-700">
+              Vous bénéficiez de 30 jours d'essai gratuit. Le paiement de l'abonnement commencera après cette période.
+            </p>
+          </div>
+        )}
+        <div className="space-y-2">
+          {(() => {
+            // Si l'utilisateur a coché l'abonnement OU s'il est déjà abonné, utiliser le tarif réduit
+            const shouldUseReducedPrice = hasFacturation || isSubscribed;
+            let totalHT = shouldUseReducedPrice ? 99 : 179;
+            // L'écheancier est gratuit avec l'abonnement
+            if (hasEcheancier && !shouldUseReducedPrice) {
+              totalHT += 49;
+            }
+            const totalTTC = totalHT * 1.20;
+
+            return (
+              <>
+                <div className="flex items-center justify-between">
+                  <p className="text-sm text-muted-foreground">Mise en demeure</p>
+                  <p className="text-sm font-medium">
+                    {shouldUseReducedPrice ? "118,80 € TTC" : "214,80 € TTC"}
                   </p>
                 </div>
-                <div className="text-right">
-                  <p className="font-bold text-xl text-green-600">34,80 € TTC</p>
-                  <p className="text-sm text-muted-foreground">/ mois</p>
+                {hasEcheancier && !shouldUseReducedPrice && (
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm text-muted-foreground">Écheancier</p>
+                    <p className="text-sm font-medium">58,80 € TTC</p>
+                  </div>
+                )}
+                {hasFacturation && !isSubscribed && (
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm text-muted-foreground">Abonnement (30 jours gratuits)</p>
+                    <p className="text-sm font-medium text-green-600">Gratuit</p>
+                  </div>
+                )}
+                <div className="flex items-center justify-between pt-2 border-t">
+                  <p className="text-lg font-semibold">Total à payer</p>
+                  <p className="text-lg font-bold">{totalTTC.toFixed(2)} € TTC</p>
                 </div>
-              </div>
-            </div>
-          </div>
-          <div className="flex gap-3 pt-4">
-            <Button
-              variant="outline"
-              onClick={handleSkipFacturation}
-              className="flex-1"
-            >
-              Non
-            </Button>
-            <Button
-              onClick={async () => {
-                setHasFacturation(true);
-                setShowFacturationPrompt(false);
-                // Afficher le panier avec l'abonnement activé
-                setShowCart(true);
-              }}
-              className="flex-1 bg-green-600 hover:bg-green-700"
-            >
-              Oui, je veux économiser
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Dialog pour le formulaire de paiement interne */}
-      <Dialog open={showPaymentForm} onOpenChange={setShowPaymentForm}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Paiement</DialogTitle>
-            <DialogDescription>
-              {hasFacturation && !isSubscribed 
-                ? "Abonnement avec 30 jours gratuits + Mise en demeure"
-                : "Finalisez votre paiement"}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            {hasFacturation && !isSubscribed && (
-              <div className="rounded-lg border-2 border-green-200 bg-green-50 p-4">
-                <p className="text-sm font-semibold text-green-900 mb-2">
-                  🎉 Abonnement avec 30 jours gratuits
-                </p>
-                <p className="text-xs text-green-700">
-                  Vous bénéficiez de 30 jours d'essai gratuit. Le paiement de l'abonnement commencera après cette période.
-                </p>
-              </div>
-            )}
-            <div className="space-y-2">
-              {(() => {
-                // Si l'utilisateur a coché l'abonnement OU s'il est déjà abonné, utiliser le tarif réduit
-                const shouldUseReducedPrice = hasFacturation || isSubscribed;
-                let totalHT = shouldUseReducedPrice ? 99 : 179;
-                // L'écheancier est gratuit avec l'abonnement
-                if (hasEcheancier && !shouldUseReducedPrice) {
-                  totalHT += 49;
-                }
-                const totalTTC = totalHT * 1.20;
-                
-                return (
-                  <>
-                    <div className="flex items-center justify-between">
-                      <p className="text-sm text-muted-foreground">Mise en demeure</p>
-                      <p className="text-sm font-medium">
-                        {shouldUseReducedPrice ? "118,80 € TTC" : "214,80 € TTC"}
-                      </p>
-                    </div>
-                    {hasEcheancier && !shouldUseReducedPrice && (
-                      <div className="flex items-center justify-between">
-                        <p className="text-sm text-muted-foreground">Écheancier</p>
-                        <p className="text-sm font-medium">58,80 € TTC</p>
-                      </div>
-                    )}
-                    {hasFacturation && !isSubscribed && (
-                      <div className="flex items-center justify-between">
-                        <p className="text-sm text-muted-foreground">Abonnement (30 jours gratuits)</p>
-                        <p className="text-sm font-medium text-green-600">Gratuit</p>
-                      </div>
-                    )}
-                    <div className="flex items-center justify-between pt-2 border-t">
-                      <p className="text-lg font-semibold">Total à payer</p>
-                      <p className="text-lg font-bold">{totalTTC.toFixed(2)} € TTC</p>
-                    </div>
-                  </>
-                );
-              })()}
-            </div>
-            {paymentClientSecret && (
-              <StripePaymentForm
-                amount={(() => {
-                  // Si l'utilisateur a coché l'abonnement OU s'il est déjà abonné, utiliser le tarif réduit
-                  const shouldUseReducedPrice = hasFacturation || isSubscribed;
-                  let totalHT = shouldUseReducedPrice ? 99 : 179;
-                  // L'écheancier est gratuit avec l'abonnement
-                  if (hasEcheancier && !shouldUseReducedPrice) {
-                    totalHT += 49;
-                  }
-                  return totalHT * 1.20;
-                })()}
-                onSuccess={handlePaymentSuccess}
-                onError={handlePaymentError}
-                procedureData={prepareProcedureData()}
-                hasFacturation={hasFacturation && !isSubscribed}
-                procedureId={paymentProcedureId || undefined}
-                clientSecret={paymentClientSecret}
-              />
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
-
-    </div>
+              </>
+            );
+          })()}
+        </div>
+        {paymentClientSecret && (
+          <StripePaymentForm
+            amount={(() => {
+              // Si l'utilisateur a coché l'abonnement OU s'il est déjà abonné, utiliser le tarif réduit
+              const shouldUseReducedPrice = hasFacturation || isSubscribed;
+              let totalHT = shouldUseReducedPrice ? 99 : 179;
+              // L'écheancier est gratuit avec l'abonnement
+              if (hasEcheancier && !shouldUseReducedPrice) {
+                totalHT += 49;
+              }
+              return totalHT * 1.20;
+            })()}
+            onSuccess={handlePaymentSuccess}
+            onError={handlePaymentError}
+            procedureData={prepareProcedureData()}
+            hasFacturation={hasFacturation && !isSubscribed}
+            procedureId={paymentProcedureId || undefined}
+            clientSecret={paymentClientSecret}
+          />
+        )}
+      </div>
+    </DialogContent>
+  </Dialog>
+  </div>
   );
 }

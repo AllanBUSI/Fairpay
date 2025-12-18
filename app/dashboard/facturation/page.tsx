@@ -20,10 +20,10 @@ interface Subscription {
 
 interface Invoice {
   id: string;
-  amount: number;
-  currency: string;
+  amount?: number;
+  currency?: string;
   status: string;
-  created: number;
+  created?: number;
   invoice_pdf: string | null;
   hosted_invoice_url: string | null;
   description: string | null;
@@ -67,8 +67,12 @@ export default function FacturationPage() {
 
       if (invoicesResponse.ok) {
         const invoicesData = await invoicesResponse.json();
-        setInvoices(invoicesData.invoices || []);
-        console.log(`📄 Factures récupérées:`, invoicesData.invoices?.length || 0);
+        // Filtrer les factures en attente (statut "open")
+        const filteredInvoices = (invoicesData.invoices || []).filter(
+          (invoice: Invoice) => invoice.status !== "open"
+        );
+        setInvoices(filteredInvoices);
+        console.log(`📄 Factures récupérées:`, filteredInvoices.length);
       } else {
         const errorData = await invoicesResponse.json();
         console.error("Erreur lors de la récupération des factures:", errorData);
@@ -100,11 +104,19 @@ export default function FacturationPage() {
   };
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString("fr-FR", {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-    });
+    try {
+      const date = new Date(dateString);
+      if (isNaN(date.getTime())) {
+        return "Date invalide";
+      }
+      return date.toLocaleDateString("fr-FR", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+      });
+    } catch (error) {
+      return "Date invalide";
+    }
   };
 
   const handleAccessStripePortal = async () => {
@@ -164,9 +176,9 @@ export default function FacturationPage() {
   }
 
   return (
-    <div className="min-h-screen bg-white">
+    <div className="min-h-screen ">
       {/* Header */}
-      <div className="border-b border-[#E5E7EB] bg-white">
+      <div className="border-b border-[#E5E7EB] ">
         <div className="container mx-auto px-6 py-6">
           <div className="flex items-center justify-between">
             <div>
@@ -186,24 +198,23 @@ export default function FacturationPage() {
       <div className="container mx-auto px-6 py-8 max-w-4xl">
         <div className="space-y-6">
           {/* Abonnement actif */}
-          <div className="rounded-xl border border-[#E5E7EB] bg-white p-6 shadow-sm">
+          <div className="rounded-xl border border-[#E5E7EB] p-6 shadow-sm">
             <h2 className="text-lg font-semibold text-[#0F172A] mb-4 flex items-center gap-2">
               <CreditCard className="h-5 w-5" />
               Mon abonnement
             </h2>
-            <div className="rounded-lg border border-[#E5E7EB] bg-gradient-to-r from-[#16A34A]/10 to-[#22C55E]/10 p-6">
+            <div className="rounded-lg border border-[#E5E7EB] bg-white p-6">
               <div className="flex items-center justify-between mb-6">
                 <div>
                   <p className="font-semibold text-[#0F172A] text-lg">Abonnement Premium</p>
                   <p className="text-sm text-[#0F172A]/60 mt-1">34,80€ TTC / mois</p>
                 </div>
-                <span className={`px-4 py-2 text-sm font-medium rounded-full ${
-                  subscription && (subscription.status === "ACTIVE" || subscription.status === "TRIALING")
-                    ? "bg-green-100 text-green-800"
-                    : "bg-gray-100 text-gray-800"
-                }`}>
-                  {subscription && (subscription.status === "ACTIVE" || subscription.status === "TRIALING") 
-                    ? "Actif" 
+                <span className={`px-4 py-2 text-sm font-medium rounded-full ${subscription && (subscription.status === "ACTIVE" || subscription.status === "TRIALING")
+                    ? "text-green-800"
+                    : "text-gray-800"
+                  }`}>
+                  {subscription && (subscription.status === "ACTIVE" || subscription.status === "TRIALING")
+                    ? "Actif"
                     : "Non actif"}
                 </span>
               </div>
@@ -235,48 +246,53 @@ export default function FacturationPage() {
               <FileText className="h-5 w-5" />
               Mes factures
             </h2>
-            
+
             {invoices.length === 0 ? (
               <p className="text-sm text-[#0F172A]/60 text-center py-8">
                 Aucune facture disponible
               </p>
             ) : (
               <div className="space-y-3">
-                {invoices.map((invoice) => (
+                {invoices.map((invoice) => {
+                  const createdTimestamp = invoice.created;
+                  return (
                   <div
                     key={invoice.id}
                     className="border border-[#E5E7EB] rounded-lg p-4 hover:bg-[#F9FAFB] transition-colors"
                   >
-                    <div className="flex items-center justify-between">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                       <div className="flex-1">
                         <div className="flex items-center gap-3 mb-2">
                           <p className="font-semibold text-[#0F172A]">
                             {invoice.description || (invoice.subscriptionId ? "Abonnement Premium" : "Achat")}
                           </p>
-                          <span className={`px-2 py-1 text-xs font-medium rounded ${
-                            invoice.status === "paid"
+                          <span className={`px-2 py-1 text-xs font-medium rounded ${invoice.status === "paid"
                               ? "bg-green-100 text-green-800"
                               : invoice.status === "open"
-                              ? "bg-yellow-100 text-yellow-800"
-                              : invoice.status === "draft"
-                              ? "bg-gray-100 text-gray-800"
-                              : "bg-red-100 text-red-800"
-                          }`}>
-                            {invoice.status === "paid" ? "Payée" : 
-                             invoice.status === "open" ? "En attente" :
-                             invoice.status === "draft" ? "Brouillon" : "Impayée"}
+                                ? "bg-yellow-100 text-yellow-800"
+                                : invoice.status === "draft"
+                                  ? "text-gray-800"
+                                  : "bg-red-100 text-red-800"
+                            }`}>
+                            {invoice.status === "paid" ? "Payée" :
+                              invoice.status === "open" ? "En attente" :
+                                invoice.status === "draft" ? "Brouillon" : "Impayée"}
                           </span>
                         </div>
-                        <div className="flex items-center gap-4 text-sm text-[#0F172A]/60">
+                        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-[#0F172A]/60">
                           {invoice.number && (
                             <span>N° {invoice.number}</span>
                           )}
-                          <span>
-                            {invoice.amount.toFixed(2)} {invoice.currency}
-                          </span>
-                          <span>
-                            {formatDate(new Date(invoice.created * 1000).toISOString())}
-                          </span>
+                          {invoice.amount !== undefined && invoice.currency && (
+                            <span>
+                              {invoice.amount.toFixed(2)} {invoice.currency}
+                            </span>
+                          )}
+                          {createdTimestamp !== undefined && createdTimestamp !== null && createdTimestamp > 0 && (
+                            <span>
+                              {formatDate(new Date(createdTimestamp * 1000).toISOString())}
+                            </span>
+                          )}
                           {invoice.subscriptionId && (
                             <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
                               Abonnement
@@ -289,7 +305,7 @@ export default function FacturationPage() {
                           )}
                         </div>
                       </div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 self-start sm:self-center">
                         {invoice.hosted_invoice_url && (
                           <Button
                             variant="outline"
@@ -313,7 +329,8 @@ export default function FacturationPage() {
                       </div>
                     </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
@@ -321,7 +338,7 @@ export default function FacturationPage() {
         </div>
       </div>
 
-          {/* Modal de succès */}
+      {/* Modal de succès */}
       <Dialog open={showSuccessModal} onOpenChange={setShowSuccessModal}>
         <DialogContent className="max-w-md">
           <DialogHeader>

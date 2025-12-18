@@ -17,6 +17,7 @@ import {
   Crown,
   Scale,
   BarChart3,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -38,6 +39,8 @@ interface SidebarProps {
     injonctions?: number;
     brouillons?: number;
   };
+  isOpen?: boolean;
+  onClose?: () => void;
 }
 
 interface NavItem {
@@ -113,7 +116,7 @@ const navItems: NavItem[] = [
   },
 ];
 
-export function Sidebar({ user, onLogout, isPremium = false, counts }: SidebarProps) {
+export function Sidebar({ user, onLogout, isPremium = false, counts, isOpen = true, onClose }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
 
@@ -152,23 +155,56 @@ export function Sidebar({ user, onLogout, isPremium = false, counts }: SidebarPr
     }
   };
 
+  const handleLinkClick = () => {
+    if (onClose) {
+      onClose();
+    }
+  };
+
   return (
-    <div className="flex h-screen w-64 flex-col border-r border-[#E5E7EB] bg-white shadow-sm">
-      {/* Header */}
-      <div className="border-b border-[#E5E7EB] px-6 py-5 bg-white">
-        <Link href="/dashboard" className="flex items-center gap-3 group">
-          <div className="transition-transform group-hover:scale-110 group-hover:rotate-3 duration-300">
-            <LogoIcon size={32} />
-          </div>
-          <span className="text-lg font-bold text-[#0F172A] tracking-tight">FairPay</span>
-        </Link>
-        {isPremium && (
-          <div className="mt-3 rounded-lg bg-gradient-to-r from-[#16A34A] to-[#22C55E] px-3 py-2 flex items-center gap-2 shadow-sm">
-            <Crown className="h-4 w-4 text-white" />
-            <span className="text-xs font-semibold text-white">Premium</span>
-          </div>
+    <>
+      {/* Overlay pour mobile */}
+      {isOpen && onClose && (
+        <div
+          className="fixed inset-0 bg-black/50 z-40 lg:hidden"
+          onClick={onClose}
+        />
+      )}
+      
+      {/* Sidebar */}
+      <div
+        className={cn(
+          "fixed lg:static inset-y-0 left-0 z-50 flex h-screen w-64 flex-col border-r border-[#E5E7EB] bg-white shadow-sm transition-transform duration-300",
+          isOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
         )}
-      </div>
+      >
+        {/* Header */}
+        <div className="border-b border-[#E5E7EB] px-6 py-5 bg-white">
+          <div className="flex items-center justify-between">
+            <Link href="/dashboard" className="flex items-center gap-3 group" onClick={handleLinkClick}>
+              <div className="transition-transform group-hover:scale-110 group-hover:rotate-3 duration-300">
+                <LogoIcon size={32} />
+              </div>
+              <span className="text-lg font-bold text-[#0F172A] tracking-tight">FairPay</span>
+            </Link>
+            {onClose && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="lg:hidden"
+                onClick={onClose}
+              >
+                <X className="h-5 w-5" />
+              </Button>
+            )}
+          </div>
+          {isPremium && (
+            <div className="mt-3 rounded-lg bg-gradient-to-r from-[#16A34A] to-[#22C55E] px-3 py-2 flex items-center gap-2 shadow-sm">
+              <Crown className="h-4 w-4 text-white" />
+              <span className="text-xs font-semibold text-white">Premium</span>
+            </div>
+          )}
+        </div>
 
       {/* Navigation */}
       <nav className="flex-1 space-y-1 p-4">
@@ -179,7 +215,7 @@ export function Sidebar({ user, onLogout, isPremium = false, counts }: SidebarPr
           const badgeCount = item.badgeKey && counts ? counts[item.badgeKey] : undefined;
           
           return (
-            <Link key={item.href} href={item.href}>
+            <Link key={item.href} href={item.href} onClick={handleLinkClick}>
               <div
                 className={cn(
                   "flex items-center justify-between rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200",
@@ -213,7 +249,7 @@ export function Sidebar({ user, onLogout, isPremium = false, counts }: SidebarPr
       {/* User section */}
       <div className="border-t border-[#E5E7EB] p-4 bg-white">
         {user && (
-          <Link href="/dashboard/profile">
+          <Link href="/dashboard/profile" onClick={handleLinkClick}>
             <div className="mb-4 flex items-center gap-3 rounded-lg px-3 py-2 hover:bg-[#E5E7EB] cursor-pointer transition-colors">
               <Avatar className="h-8 w-8">
                 <AvatarFallback className="bg-[#0F172A] text-white text-xs font-semibold">
@@ -246,6 +282,7 @@ export function Sidebar({ user, onLogout, isPremium = false, counts }: SidebarPr
         </Button>
       </div>
     </div>
+    </>
   );
 }
 

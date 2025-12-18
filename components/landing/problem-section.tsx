@@ -7,8 +7,8 @@ import { ScrollAnimation } from "./scroll-animation";
 export function ProblemSection() {
   return (
     <section className="relative py-32 px-4 sm:px-6 lg:px-8 bg-[#0F172A] text-white overflow-hidden">
-      {/* Lignes décoratives */}
-      <div className="absolute inset-0 pointer-events-none opacity-30">
+      {/* Lignes décoratives - Masquées sur mobile */}
+      <div className="absolute inset-0 pointer-events-none opacity-30 hidden md:block">
         <DecorativeLines variant="diagonal" />
       </div>
       
