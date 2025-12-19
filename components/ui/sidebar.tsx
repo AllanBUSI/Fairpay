@@ -18,6 +18,7 @@ import {
   Scale,
   BarChart3,
   X,
+  MessageCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -38,6 +39,8 @@ interface SidebarProps {
     dashboard?: number;
     injonctions?: number;
     brouillons?: number;
+    nouveaux?: number;
+    nouveauxName?: string;
   };
   isOpen?: boolean;
   onClose?: () => void;
@@ -49,7 +52,7 @@ interface NavItem {
   icon: React.ComponentType<{ className?: string }>;
   roles?: UserRole[]; // Si non spécifié, accessible à tous
   getTitle?: (role: UserRole) => string; // Fonction pour obtenir le titre selon le rôle
-  badgeKey?: "dashboard" | "injonctions" | "brouillons"; // Clé pour récupérer le badge
+  badgeKey?: "dashboard" | "injonctions" | "brouillons" | "nouveaux"; // Clé pour récupérer le badge
 }
 
 const navItems: NavItem[] = [
@@ -64,12 +67,15 @@ const navItems: NavItem[] = [
     href: "/dashboard/nouveaux",
     icon: FileText,
     roles: [UserRole.AVOCAT],
+    badgeKey: "nouveaux",
   },
   {
     title: "Injonctions de paiement",
     href: "/dashboard/injonctions-avocat",
     icon: Scale,
     roles: [UserRole.AVOCAT, UserRole.JURISTE],
+    badgeKey: "injonctions",
+    getTitle: (role) => role === UserRole.AVOCAT ? "Demande IHP" : "Injonctions de paiement",
   },
   {
     title: "Nouveau dossier",
@@ -113,6 +119,18 @@ const navItems: NavItem[] = [
     href: "/dashboard/facturation",
     icon: CreditCard,
     roles: [UserRole.USER],
+  },
+  {
+    title: "Chat avec avocat",
+    href: "/dashboard/chat",
+    icon: MessageCircle,
+    roles: [UserRole.USER],
+  },
+  {
+    title: "Chat avec clients",
+    href: "/dashboard/chat-avocat",
+    icon: MessageCircle,
+    roles: [UserRole.AVOCAT, UserRole.JURISTE],
   },
 ];
 
@@ -174,43 +192,46 @@ export function Sidebar({ user, onLogout, isPremium = false, counts, isOpen = tr
       {/* Sidebar */}
       <div
         className={cn(
-          "fixed lg:static inset-y-0 left-0 z-50 flex h-screen w-64 flex-col border-r border-[#E5E7EB] bg-white shadow-sm transition-transform duration-300",
+          "fixed lg:static inset-y-0 left-0 z-50 flex h-screen w-64 flex-col bg-white shadow-lg border-r border-[#E5E7EB] transition-transform duration-300",
           isOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
         )}
       >
         {/* Header */}
-        <div className="border-b border-[#E5E7EB] px-6 py-5 bg-white">
+        <div className="border-b-2 border-[#16A34A]/20 px-6 py-5 bg-gradient-to-r from-[#F0FDF4] to-white">
           <div className="flex items-center justify-between">
             <Link href="/dashboard" className="flex items-center gap-3 group" onClick={handleLinkClick}>
               <div className="transition-transform group-hover:scale-110 group-hover:rotate-3 duration-300">
                 <LogoIcon size={32} />
               </div>
-              <span className="text-lg font-bold text-[#0F172A] tracking-tight">FairPay</span>
+              <span className="text-lg font-black text-[#16A34A] tracking-tight">FairPay</span>
             </Link>
             {onClose && (
               <Button
                 variant="ghost"
                 size="icon"
-                className="lg:hidden"
+                className="lg:hidden hover:bg-[#F0FDF4] rounded-lg"
                 onClick={onClose}
               >
-                <X className="h-5 w-5" />
+                <X className="h-5 w-5 text-[#16A34A]" />
               </Button>
             )}
           </div>
           {isPremium && (
-            <div className="mt-3 rounded-lg bg-gradient-to-r from-[#16A34A] to-[#22C55E] px-3 py-2 flex items-center gap-2 shadow-sm">
+            <div className="mt-3 rounded-xl bg-gradient-to-r from-[#16A34A] to-[#22C55E] px-3 py-2 flex items-center gap-2 shadow-lg">
               <Crown className="h-4 w-4 text-white" />
-              <span className="text-xs font-semibold text-white">Premium</span>
+              <span className="text-xs font-bold text-white">Premium</span>
             </div>
           )}
         </div>
 
       {/* Navigation */}
-      <nav className="flex-1 space-y-1 p-4">
+      <nav className="flex-1 space-y-2 p-4 overflow-y-auto">
         {filteredNavItems.map((item) => {
           const Icon = item.icon;
-          const isActive = pathname === item.href || pathname.startsWith(item.href + "/");
+          // Pour le Dashboard, on vérifie seulement l'égalité exacte, pas les sous-routes
+          const isActive = item.href === "/dashboard" 
+            ? pathname === item.href
+            : pathname === item.href || pathname.startsWith(item.href + "/");
           const displayTitle = item.getTitle && user ? item.getTitle(user.role) : item.title;
           const badgeCount = item.badgeKey && counts ? counts[item.badgeKey] : undefined;
           
@@ -218,28 +239,31 @@ export function Sidebar({ user, onLogout, isPremium = false, counts, isOpen = tr
             <Link key={item.href} href={item.href} onClick={handleLinkClick}>
               <div
                 className={cn(
-                  "flex items-center justify-between rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200",
+                  "flex items-center justify-between rounded-xl px-4 py-3 text-sm font-semibold transition-all duration-200 group",
                   isActive
-                    ? "bg-[#0F172A] text-white shadow-sm"
-                    : "text-[#0F172A]/70 hover:bg-[#E5E7EB] hover:text-[#0F172A]"
+                    ? "bg-gradient-to-r from-[#16A34A] to-[#22C55E] text-white shadow-lg"
+                    : "text-[#0F172A]/70 hover:bg-[#F0FDF4] hover:text-[#16A34A] hover:shadow-sm"
                 )}
               >
                 <div className="flex items-center gap-3">
-                  <Icon className="h-5 w-5" />
+                  <Icon className={cn(
+                    "h-5 w-5 transition-transform duration-200",
+                    isActive ? "" : "group-hover:scale-110"
+                  )} />
                   <span>{displayTitle}</span>
                 </div>
-                {badgeCount !== undefined && badgeCount > 0 && (
+                {badgeCount !== undefined && badgeCount > 0 ? (
                   <span
                     className={cn(
-                      "ml-2 rounded-full px-2 py-0.5 text-xs font-semibold",
+                      "ml-2 rounded-full px-2.5 py-1 text-xs font-bold min-w-[24px] text-center",
                       isActive
-                        ? "bg-white/20 text-white"
-                        : "bg-[#0F172A] text-white"
+                        ? "bg-white/30 text-white"
+                        : "bg-[#0F172A] text-white shadow-sm"
                     )}
                   >
                     {badgeCount}
                   </span>
-                )}
+                ) : null}
               </div>
             </Link>
           );
@@ -250,31 +274,31 @@ export function Sidebar({ user, onLogout, isPremium = false, counts, isOpen = tr
       <div className="border-t border-[#E5E7EB] p-4 bg-white">
         {user && (
           <Link href="/dashboard/profile" onClick={handleLinkClick}>
-            <div className="mb-4 flex items-center gap-3 rounded-lg px-3 py-2 hover:bg-[#E5E7EB] cursor-pointer transition-colors">
-              <Avatar className="h-8 w-8">
-                <AvatarFallback className="bg-[#0F172A] text-white text-xs font-semibold">
+            <div className="mb-4 flex items-center gap-3 rounded-xl px-4 py-3 hover:bg-[#F0FDF4] cursor-pointer transition-all duration-200 hover:shadow-sm">
+              <Avatar className="h-10 w-10 ring-2 ring-[#16A34A]/20">
+                <AvatarFallback className="bg-gradient-to-br from-[#16A34A] to-[#22C55E] text-white text-sm font-bold">
                   {user.nom && user.prenom
                     ? `${user.prenom.charAt(0)}${user.nom.charAt(0)}`.toUpperCase()
                     : getInitials(user.email)}
                 </AvatarFallback>
               </Avatar>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium truncate text-[#0F172A]">
+                <p className="text-sm font-semibold truncate text-[#0F172A]">
                   {user.prenom && user.nom
                     ? `${user.prenom} ${user.nom}`
                     : user.email}
                 </p>
-                <p className="text-xs text-[#0F172A]/60 truncate">
+                <p className="text-xs text-[#64748B] truncate font-light">
                   {user.email}
                 </p>
               </div>
-              <User className="h-4 w-4 text-[#0F172A]/60" />
+              <User className="h-4 w-4 text-[#16A34A]" />
             </div>
           </Link>
         )}
         <Button
           variant="ghost"
-          className="w-full justify-start text-[#0F172A]/70 hover:text-[#0F172A] hover:bg-[#E5E7EB]"
+          className="w-full justify-start text-[#0F172A]/70 hover:text-[#16A34A] hover:bg-[#F0FDF4] rounded-xl py-3 font-semibold transition-all duration-200 hover:shadow-sm"
           onClick={handleLogout}
         >
           <LogOut className="mr-2 h-4 w-4" />

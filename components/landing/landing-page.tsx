@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect } from "react";
+import { usePathname } from "next/navigation";
 import { LandingNavigation } from "./navigation";
 import { HeroSection } from "./hero-section";
 import { ProblemSection } from "./problem-section";
@@ -14,6 +16,41 @@ import { CTASection } from "./cta-section";
 import { LandingFooter } from "./footer";
 
 export function LandingPage() {
+  const pathname = usePathname();
+
+  useEffect(() => {
+    // Protection immédiate : empêcher toute redirection vers /login depuis la page d'accueil
+    if (pathname === "/") {
+      // Intercepter immédiatement les redirections
+      const preventLoginRedirect = (e: BeforeUnloadEvent | PopStateEvent) => {
+        if (window.location.pathname === "/" && window.location.href.includes("/login")) {
+          e.preventDefault();
+          window.history.pushState(null, "", "/");
+          return false;
+        }
+        return undefined;
+      };
+
+      // Empêcher la navigation vers /login
+      const originalPushState = window.history.pushState;
+      window.history.pushState = function(...args) {
+        const url = args[2];
+        if (url && typeof url === 'string' && (url.includes('/login') || url === '/login')) {
+          console.warn('[LandingPage] Redirection vers /login bloquée');
+          return;
+        }
+        return originalPushState.apply(window.history, args);
+      };
+
+      return () => {
+        window.history.pushState = originalPushState;
+      };
+    }
+    
+    // Retourner undefined si on n'est pas sur la page d'accueil
+    return undefined;
+  }, [pathname]);
+
   return (
     <div className="min-h-screen bg-white">
       <LandingNavigation />

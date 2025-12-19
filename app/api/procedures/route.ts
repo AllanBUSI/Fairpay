@@ -87,6 +87,8 @@ export async function GET(request: NextRequest) {
         montantDue: true,
         paymentStatus: true,
         dateEnvoiLRAR: true,
+        avocatId: true,
+        userId: true,
         createdAt: true,
         updatedAt: true,
         client: {

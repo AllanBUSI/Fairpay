@@ -49,6 +49,8 @@ export default function DashboardLayout({
     dashboard?: number;
     injonctions?: number;
     brouillons?: number;
+    nouveaux?: number;
+    nouveauxName?: string;
   }>({});
 
   const fetchCounts = async () => {
@@ -82,9 +84,18 @@ export default function DashboardLayout({
         },
       });
 
+      // Récupérer les nouveaux dossiers (pour les avocats)
+      const nouveauxResponse = await fetch("/api/procedures?status=NOUVEAU", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
       let dashboardCount = 0;
       let brouillonsCount = 0;
       let injonctionsCount = 0;
+      let nouveauxCount = 0;
+      let nouveauxName = "";
 
       if (dashboardResponse.ok) {
         const data = await dashboardResponse.json();
@@ -105,10 +116,24 @@ export default function DashboardLayout({
         injonctionsCount += data2.procedures?.length || 0;
       }
 
+      if (nouveauxResponse.ok) {
+        const data = await nouveauxResponse.json();
+        nouveauxCount = data.procedures?.length || 0;
+        // Récupérer le nom du dernier nouveau dossier
+        if (data.procedures && data.procedures.length > 0) {
+          const latestProcedure = data.procedures[0]; // Le premier est le plus récent (trié par createdAt desc)
+          nouveauxName = latestProcedure.client?.nomSociete || 
+                        `${latestProcedure.client?.prenom || ''} ${latestProcedure.client?.nom || ''}`.trim() ||
+                        "Nouveau dossier";
+        }
+      }
+
       setCounts({
         dashboard: dashboardCount,
         injonctions: injonctionsCount,
         brouillons: brouillonsCount,
+        nouveaux: nouveauxCount,
+        nouveauxName: nouveauxName,
       });
     } catch (err) {
       console.error("Erreur lors de la récupération des compteurs:", err);
@@ -305,19 +330,19 @@ export default function DashboardLayout({
       />
       <div className="flex-1 flex flex-col overflow-hidden bg-white">
         {/* Mobile header avec bouton menu */}
-        <div className="lg:hidden bg-white border-b border-[#E5E7EB] px-4 py-3 flex items-center gap-3">
+        <div className="lg:hidden bg-gradient-to-r from-[#F0FDF4] to-white border-b-2 border-[#16A34A]/20 px-4 py-3 flex items-center gap-3 shadow-sm">
           <Button
             variant="ghost"
             size="icon"
             onClick={() => setSidebarOpen(true)}
-            className="lg:hidden"
+            className="lg:hidden hover:bg-[#F0FDF4] rounded-lg"
           >
-            <Menu className="h-5 w-5" />
+            <Menu className="h-5 w-5 text-[#16A34A]" />
           </Button>
-          <span className="text-lg font-bold text-[#0F172A]">FairPay</span>
+          <span className="text-lg font-black text-[#16A34A] tracking-tight">FairPay</span>
         </div>
-        <div className="flex-1 overflow-y-auto">
-          <div className="min-h-full p-4 lg:p-6">
+        <div className="flex-1 overflow-y-auto bg-white">
+          <div className="min-h-full p-4 lg:p-6 lg:p-8">
             {children}
           </div>
         </div>

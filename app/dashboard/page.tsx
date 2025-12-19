@@ -609,13 +609,15 @@ Signature : _________________
   return (
     <div className="min-h-screen bg-white">
       {/* Header */}
-      <div className="border-b border-[#E5E7EB] bg-white">
-        <div className="container mx-auto px-4 lg:px-6 py-4 lg:py-6">
+      <div className="border-b-2 border-[#16A34A]/20 bg-gradient-to-r from-[#F0FDF4] to-white shadow-sm">
+        <div className="container mx-auto px-4 lg:px-6 py-6 lg:py-8">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-2xl lg:text-3xl font-bold text-[#0F172A] tracking-tight">Dashboard</h1>
-              <p className="text-xs lg:text-sm text-[#0F172A]/70 mt-1 font-light">
-                Gestion des procédures
+              <h1 className="text-3xl lg:text-4xl font-black text-[#16A34A] tracking-[-0.03em] mb-2">
+                Dashboard
+              </h1>
+              <p className="text-sm lg:text-base text-[#64748B] font-light">
+                Gestion des procédures de recouvrement
               </p>
             </div>
           </div>
@@ -626,97 +628,113 @@ Signature : _________________
       <div className="container mx-auto px-4 lg:px-6 py-4 lg:py-8">
         {/* Message de succès du paiement */}
         {paymentSuccess && (
-          <div className="mb-6 rounded-xl border-2 border-[#16A34A] bg-gradient-to-r from-[#16A34A]/10 to-[#22C55E]/10 p-4 flex items-center gap-3 shadow-sm">
-            <CheckCircle className="h-5 w-5 text-[#16A34A]" />
+          <div className="mb-6 rounded-xl border-2 border-[#16A34A] bg-gradient-to-r from-[#16A34A]/20 to-[#22C55E]/20 p-4 flex items-center gap-3 shadow-lg">
+            <div className="rounded-full bg-gradient-to-r from-[#16A34A] to-[#22C55E] p-2">
+              <CheckCircle className="h-5 w-5 text-white" />
+            </div>
             <div className="flex-1">
-              <p className="font-semibold text-[#0F172A]">Paiement réussi !</p>
-              <p className="text-sm text-[#0F172A]/70">Votre dossier a été créé avec succès.</p>
+              <p className="font-bold text-[#16A34A]">Paiement réussi !</p>
+              <p className="text-sm text-[#64748B] font-light">Votre dossier a été créé avec succès.</p>
             </div>
           </div>
         )}
         {/* Encarts principaux */}
-        <div className="mb-6 lg:mb-8 grid gap-3 lg:gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
-          <div className="rounded-xl border border-[#E5E7EB] bg-white p-6 shadow-sm hover:shadow-md transition-shadow cursor-pointer" onClick={() => router.push("/dashboard")}>
+        <div className="mb-6 lg:mb-8 grid gap-4 lg:gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="rounded-2xl border-2 border-[#16A34A]/30 bg-gradient-to-br from-[#F0FDF4] to-white p-6 lg:p-8 shadow-lg hover:shadow-xl transition-all duration-200 cursor-pointer group hover:border-[#16A34A] hover:scale-[1.02]" onClick={() => router.push("/dashboard")}>
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-[#0F172A]/70">Dossiers</p>
-                <p className="text-2xl font-bold text-[#0F172A]">{allProcedures.length}</p>
-                <p className="text-xs text-[#0F172A]/60 mt-1">Dans le dashboard</p>
+                <p className="text-sm font-semibold text-[#16A34A] mb-1">Dossiers</p>
+                <p className="text-3xl lg:text-4xl font-black text-[#0F172A] mb-1">{allProcedures.length}</p>
+                <p className="text-xs text-[#64748B] font-light">Dans le dashboard</p>
               </div>
-              <FileText className="h-8 w-8 text-[#2563EB]" />
+              <div className="rounded-xl bg-gradient-to-br from-[#16A34A] to-[#22C55E] p-3 group-hover:scale-110 transition-transform duration-200 shadow-md">
+                <FileText className="h-8 w-8 text-white" />
+              </div>
             </div>
           </div>
-          <div className="rounded-xl border border-amber-200 bg-amber-50 p-6 shadow-sm hover:shadow-md transition-shadow cursor-pointer" onClick={() => router.push("/dashboard/saisir-tribunal")}>
+          <div className="rounded-2xl border-2 border-[#16A34A]/30 bg-gradient-to-br from-[#F0FDF4] to-white p-6 lg:p-8 shadow-lg hover:shadow-xl transition-all duration-200 cursor-pointer group hover:border-[#16A34A] hover:scale-[1.02]" onClick={() => router.push("/dashboard/saisir-tribunal")}>
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-amber-900">Saisir le tribunal</p>
-                <p className="text-2xl font-bold text-amber-900">{injonctionsCount}</p>
-                <p className="text-xs text-amber-700 mt-1">Dossiers d'injonction</p>
+                <p className="text-sm font-semibold text-[#16A34A] mb-1">Saisir le tribunal</p>
+                <p className="text-3xl lg:text-4xl font-black text-[#0F172A] mb-1">{injonctionsCount}</p>
+                <p className="text-xs text-[#64748B] font-light">Dossiers d'injonction</p>
               </div>
-              <Scale className="h-8 w-8 text-amber-600" />
+              <div className="rounded-xl bg-gradient-to-br from-[#16A34A] to-[#22C55E] p-3 group-hover:scale-110 transition-transform duration-200 shadow-md">
+                <Scale className="h-8 w-8 text-white" />
+              </div>
             </div>
           </div>
-          <div className="rounded-xl border border-yellow-200 bg-yellow-50 p-6 shadow-sm hover:shadow-md transition-shadow cursor-pointer" onClick={() => router.push("/dashboard/brouillons")}>
+          <div className="rounded-2xl border-2 border-[#16A34A]/30 bg-gradient-to-br from-[#F0FDF4] to-white p-6 lg:p-8 shadow-lg hover:shadow-xl transition-all duration-200 cursor-pointer group hover:border-[#16A34A] hover:scale-[1.02]" onClick={() => router.push("/dashboard/brouillons")}>
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-yellow-900">Brouillons</p>
-                <p className="text-2xl font-bold text-yellow-900">{brouillonsCount}</p>
-                <p className="text-xs text-yellow-700 mt-1">Dossiers en brouillon</p>
+                <p className="text-sm font-semibold text-[#16A34A] mb-1">Brouillons</p>
+                <p className="text-3xl lg:text-4xl font-black text-[#0F172A] mb-1">{brouillonsCount}</p>
+                <p className="text-xs text-[#64748B] font-light">Dossiers en brouillon</p>
               </div>
-              <FileText className="h-8 w-8 text-yellow-600" />
+              <div className="rounded-xl bg-gradient-to-br from-[#16A34A] to-[#22C55E] p-3 group-hover:scale-110 transition-transform duration-200 shadow-md">
+                <FileText className="h-8 w-8 text-white" />
+              </div>
             </div>
           </div>
         </div>
         
         {/* Stats Cards détaillées */}
-        <div className="mb-6 lg:mb-8 grid gap-3 lg:gap-4 grid-cols-2 lg:grid-cols-4">
-          <div className="rounded-xl border border-[#E5E7EB] bg-white p-6 shadow-sm hover:shadow-md transition-shadow">
+        <div className="mb-6 lg:mb-8 grid gap-4 grid-cols-2 lg:grid-cols-4">
+          <div className="rounded-xl border-2 border-[#16A34A]/20 bg-gradient-to-br from-[#F0FDF4] to-white p-5 shadow-md hover:shadow-lg transition-all duration-200 hover:border-[#16A34A]/40">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-[#0F172A]/70">Total</p>
-                <p className="text-2xl font-bold text-[#0F172A]">{allProcedures.length}</p>
+                <p className="text-xs font-semibold text-[#16A34A] mb-1">Total</p>
+                <p className="text-2xl font-black text-[#0F172A]">{allProcedures.length}</p>
               </div>
-              <FileText className="h-8 w-8 text-[#2563EB]" />
+              <div className="rounded-lg bg-gradient-to-br from-[#16A34A] to-[#22C55E] p-2 shadow-sm">
+                <FileText className="h-6 w-6 text-white" />
+              </div>
             </div>
           </div>
-          <div className="rounded-xl border border-[#E5E7EB] p-6 shadow-sm hover:shadow-md transition-shadow">
+          <div className="rounded-xl border-2 border-[#16A34A]/20 bg-gradient-to-br from-[#F0FDF4] to-white p-5 shadow-md hover:shadow-lg transition-all duration-200 hover:border-[#16A34A]/40">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-[#0F172A]/70">En cours</p>
-                <p className="text-2xl font-bold text-[#2563EB]">
+                <p className="text-xs font-semibold text-[#16A34A] mb-1">En cours</p>
+                <p className="text-2xl font-black text-[#16A34A]">
                   {allProcedures.filter((p) => p.status === "EN_COURS").length}
                 </p>
               </div>
-              <div className="h-8 w-8 rounded-full bg-[#2563EB]/10" />
+              <div className="h-10 w-10 rounded-lg bg-gradient-to-br from-[#16A34A] to-[#22C55E] flex items-center justify-center shadow-sm">
+                <div className="h-3 w-3 rounded-full bg-white" />
+              </div>
             </div>
           </div>
-          <div className="rounded-xl border border-[#E5E7EB] p-6 shadow-sm hover:shadow-md transition-shadow">
+          <div className="rounded-xl border-2 border-[#16A34A]/20 bg-gradient-to-br from-[#F0FDF4] to-white p-5 shadow-md hover:shadow-lg transition-all duration-200 hover:border-[#16A34A]/40">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-[#0F172A]/70">En attente d'examen</p>
-                <p className="text-2xl font-bold text-yellow-600">
+                <p className="text-xs font-semibold text-[#16A34A] mb-1">En attente</p>
+                <p className="text-2xl font-black text-[#16A34A]">
                   {allProcedures.filter((p) => p.status === "EN_ATTENTE_REPONSE").length}
                 </p>
               </div>
-              <div className="h-8 w-8 rounded-full bg-yellow-100" />
+              <div className="h-10 w-10 rounded-lg bg-gradient-to-br from-[#16A34A]/30 to-[#22C55E]/30 flex items-center justify-center">
+                <div className="h-3 w-3 rounded-full bg-[#16A34A]" />
+              </div>
             </div>
           </div>
-          <div className="rounded-xl border border-[#E5E7EB] p-6 shadow-sm hover:shadow-md transition-shadow">
+          <div className="rounded-xl border-2 border-[#16A34A]/20 bg-gradient-to-br from-[#F0FDF4] to-white p-5 shadow-md hover:shadow-lg transition-all duration-200 hover:border-[#16A34A]/40">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-[#0F172A]/70">Résolu</p>
-                <p className="text-2xl font-bold text-[#16A34A]">
+                <p className="text-xs font-semibold text-[#16A34A] mb-1">Résolu</p>
+                <p className="text-2xl font-black text-[#16A34A]">
                   {allProcedures.filter((p) => p.status === "RESOLU").length}
                 </p>
               </div>
-              <div className="h-8 w-8 rounded-full bg-[#16A34A]/10" />
+              <div className="h-10 w-10 rounded-lg bg-gradient-to-br from-[#16A34A] to-[#22C55E] flex items-center justify-center shadow-sm">
+                <div className="h-3 w-3 rounded-full bg-white" />
+              </div>
             </div>
           </div>
         </div>
 
         {/* Tabs */}
-        <div className="mb-6 rounded-xl border border-[#E5E7EB] p-1 shadow-sm overflow-hidden">
-          <nav className="flex space-x-1 overflow-x-auto tabs-scrollbar pb-2 -mx-4 px-4 lg:mx-0 lg:px-0">
+        <div className="mb-6 rounded-xl border-2 border-[#16A34A]/20 bg-gradient-to-r from-[#F0FDF4] to-white p-2 shadow-lg overflow-hidden">
+          <nav className="flex space-x-2 overflow-x-auto tabs-scrollbar pb-2 -mx-4 px-4 lg:mx-0 lg:px-0">
             {tabs.map((tab) => {
               // Calculer le nombre de procédures pour ce statut
               let count = 0;
@@ -730,19 +748,19 @@ Signature : _________________
                 <button
                   key={tab}
                   onClick={() => setActiveTab(tab)}
-                  className={`flex-shrink-0 rounded-lg px-4 py-2.5 text-sm font-medium transition-all flex items-center justify-center gap-2 whitespace-nowrap ${
+                  className={`flex-shrink-0 rounded-lg px-4 py-2.5 text-sm font-semibold transition-all duration-200 flex items-center justify-center gap-2 whitespace-nowrap ${
                     activeTab === tab
-                      ? "bg-[#0F172A] text-white shadow-sm"
-                      : "text-[#0F172A]/70 hover:bg-[#E5E7EB] hover:text-[#0F172A]"
+                      ? "bg-gradient-to-r from-[#16A34A] to-[#22C55E] text-white shadow-md"
+                      : "text-[#64748B] hover:bg-[#F0FDF4] hover:text-[#16A34A] border border-transparent hover:border-[#16A34A]/30"
                   }`}
                 >
                   <span>{statusLabels[tab]}</span>
                   {count > 0 && (
                     <span
-                      className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
+                      className={`rounded-full px-2.5 py-1 text-xs font-bold min-w-[24px] text-center ${
                         activeTab === tab
-                          ? "bg-white/20 text-white"
-                          : "bg-[#0F172A]/10 text-[#0F172A]/70"
+                          ? "bg-white/30 text-white"
+                          : "bg-[#16A34A] text-white shadow-sm"
                       }`}
                     >
                       {count}
@@ -756,7 +774,7 @@ Signature : _________________
 
         {/* Error Message */}
         {error && (
-          <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+          <div className="mb-4 rounded-xl border-2 border-red-200 bg-gradient-to-r from-red-50 to-red-100/50 p-4 text-sm text-red-800 shadow-md">
             {error}
           </div>
         )}
@@ -764,51 +782,56 @@ Signature : _________________
         {/* Loading State */}
         {loading ? (
           <div className="flex items-center justify-center py-12">
-            <div className="text-[#0F172A]/70 font-light">Chargement...</div>
+            <div className="flex flex-col items-center gap-3">
+              <div className="h-8 w-8 border-4 border-[#16A34A]/20 border-t-[#16A34A] rounded-full animate-spin"></div>
+              <div className="text-[#16A34A] font-semibold">Chargement...</div>
+            </div>
           </div>
         ) : procedures.length === 0 ? (
-          <div className="rounded-xl border border-[#E5E7EB] bg-white p-12 text-center shadow-sm">
-            <FileText className="mx-auto h-12 w-12 text-[#0F172A]/40 mb-4" />
-            <p className="text-lg font-semibold mb-2 text-[#0F172A]">Aucune procédure</p>
-            <p className="text-sm text-[#0F172A]/70 font-light">
+          <div className="rounded-2xl border-2 border-[#16A34A]/20 bg-gradient-to-br from-white to-[#F0FDF4]/30 p-12 text-center shadow-lg">
+            <div className="rounded-full bg-gradient-to-r from-[#16A34A]/10 to-[#22C55E]/10 p-4 w-20 h-20 mx-auto mb-4 flex items-center justify-center">
+              <FileText className="h-10 w-10 text-[#16A34A]" />
+            </div>
+            <p className="text-lg font-black mb-2 text-[#0F172A]">Aucune procédure</p>
+            <p className="text-sm text-[#64748B] font-light">
               Aucune procédure trouvée pour ce statut.
             </p>
           </div>
         ) : (
-          <div className="grid gap-3 lg:gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-4 lg:gap-6 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
             {procedures.map((procedure) => (
               <Link
                 key={procedure.id}
                 href={`/dashboard/${procedure.id}`}
-                className="group rounded-xl border border-[#E5E7EB] p-6 shadow-sm transition-all hover:shadow-md hover:border-[#2563EB]/30 cursor-pointer"
+                className="group rounded-2xl border-2 border-[#16A34A]/20 bg-gradient-to-br from-white to-[#F0FDF4]/30 p-6 shadow-lg transition-all duration-200 hover:shadow-xl hover:border-[#16A34A] hover:scale-[1.02] cursor-pointer"
               >
                 <div className="mb-4 flex items-start justify-between">
                   <div className="flex-1">
-                    <h3 className="text-lg font-semibold mb-1 text-[#0F172A]">
+                    <h3 className="text-lg font-black mb-1 text-[#0F172A] tracking-tight">
                       {procedure.client?.nomSociete || `${procedure.client?.prenom || ""} ${procedure.client?.nom || ""}`.trim() || "Client non renseigné"}
                     </h3>
-                    <p className="text-xs text-[#0F172A]/60 font-light">
+                    <p className="text-xs text-[#64748B] font-light">
                       SIRET: {procedure.client?.siret || "Non renseigné"}
                     </p>
                   </div>
                   <span
-                    className={`rounded-full px-2.5 py-1 text-xs font-medium ${
+                    className={`rounded-full px-3 py-1.5 text-xs font-medium ${
                       statusColors[procedure.status] || statusColors.NOUVEAU
                     }`}
                   >
                     {statusLabels[procedure.status] || "Nouveau"}
                   </span>
                 </div>
-                <p className="mb-4 line-clamp-3 text-sm text-[#0F172A]/70 font-light">
+                <p className="mb-4 line-clamp-3 text-sm text-[#64748B] font-light leading-relaxed">
                   {procedure.contexte}
                 </p>
-                <div className="flex items-center justify-between border-t border-[#E5E7EB] pt-4 text-xs text-[#0F172A]/60">
+                <div className="flex items-center justify-between border-t-2 border-[#16A34A]/20 pt-4 text-xs text-[#64748B]">
                   <div>
-                    <span className="font-medium">Facture échue:</span>{" "}
+                    <span className="font-semibold text-[#16A34A]">Facture échue:</span>{" "}
                     {formatDate(procedure.dateFactureEchue)}
                   </div>
                   <div>
-                    <span className="font-medium">Créée:</span>{" "}
+                    <span className="font-semibold text-[#16A34A]">Créée:</span>{" "}
                     {formatDate(procedure.createdAt)}
                   </div>
                 </div>

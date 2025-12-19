@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { LandingNavigation } from "@/components/landing/navigation";
 import { DecorativeLines } from "@/components/landing/decorative-lines";
 import { ScrollAnimation } from "@/components/landing/scroll-animation";
@@ -14,6 +14,17 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+
+  // Supprimer le token lors de l'arrivée sur la page de login (déconnexion forcée)
+  useEffect(() => {
+    // Supprimer le token du localStorage
+    localStorage.removeItem("token");
+    
+    // Supprimer le token des cookies
+    document.cookie = "token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax";
+    
+    console.log("[LoginPage] Token supprimé - Déconnexion forcée");
+  }, []);
 
   const handleSendCode = async (e: React.FormEvent) => {
     e.preventDefault();
